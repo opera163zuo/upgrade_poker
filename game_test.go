@@ -144,7 +144,7 @@ func TestValidateLeadingPlay(t *testing.T) {
 
 	// Single card is always valid
 	single := []Card{{Suit: SuitSpade, Rank: RankA}}
-	if !ValidatePlay(single, nil, single, trumpSuit, level) {
+	if !ValidatePlay(single, nil, single, nil, trumpSuit, level) {
 		t.Error("Single card lead should be valid")
 	}
 
@@ -153,7 +153,7 @@ func TestValidateLeadingPlay(t *testing.T) {
 		{Suit: SuitSpade, Rank: RankA},
 		{Suit: SuitClub, Rank: RankK},
 	}
-	if ValidatePlay(mixed, nil, mixed, trumpSuit, level) {
+	if ValidatePlay(mixed, nil, mixed, nil, trumpSuit, level) {
 		t.Error("Mixed suit lead should be invalid")
 	}
 }
@@ -195,7 +195,7 @@ func TestAIPlayNoCrash(t *testing.T) {
 				player := g.Players[currentPlayer]
 				var cards []Card
 				if trick.PlayerCount() == 0 {
-					cards = aiLead(player, g.TrumpSuit, level)
+					cards = aiLead(player, g.TrumpSuit, level, g)
 				} else {
 					cards = aiFollow(player, trick, g.TrumpSuit, level, g)
 				}
@@ -205,7 +205,13 @@ func TestAIPlayNoCrash(t *testing.T) {
 				if trick.PlayerCount() > 0 {
 					leadCards = trick.LeadCards()
 				}
-				if !ValidatePlay(cards, leadCards, player.Hand, g.TrumpSuit, level) {
+				otherHands := make([][]Card, 0, 3)
+				for j := range g.Players {
+					if j != int(player.Position) {
+						otherHands = append(otherHands, g.Players[j].Hand)
+					}
+				}
+				if !ValidatePlay(cards, leadCards, player.Hand, otherHands, g.TrumpSuit, level) {
 					cards = aiSafePlay(player, trick, g.TrumpSuit, level)
 				}
 
@@ -223,5 +229,75 @@ func TestAIPlayNoCrash(t *testing.T) {
 		}
 
 		fmt.Printf("Hand %d: Team0=%d Team1=%d\n", hand, g.TeamScore[0], g.TeamScore[1])
+	}
+}
+
+func TestThrowCards(t *testing.T) {
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	// Player has both copies of A and Q in spades (non-consecutive pairs)
+	hand := []Card{
+		{Suit: SuitSpade, Rank: RankA, Copy: 0},
+		{Suit: SuitSpade, Rank: RankA, Copy: 1},
+		{Suit: SuitSpade, Rank: RankQ, Copy: 0},
+		{Suit: SuitSpade, Rank: RankQ, Copy: 1},
+	}
+
+	// Other players have no spades at all
+	otherHands := [][]Card{
+		{{Suit: SuitClub, Rank: RankA, Copy: 0}},
+		{{Suit: SuitDiamond, Rank: RankA, Copy: 0}},
+		{},
+	}
+
+	// Throw AA pair + QQ pair - both max since no one else has higher spade pairs
+	throw := []Card{
+		{Suit: SuitSpade, Rank: RankA, Copy: 0},
+		{Suit: SuitSpade, Rank: RankA, Copy: 1},
+		{Suit: SuitSpade, Rank: RankQ, Copy: 0},
+		{Suit: SuitSpade, Rank: RankQ, Copy: 1},
+	}
+	if !ValidatePlay(throw, nil, hand, otherHands, trumpSuit, level) {
+		t.Error("Throw AA+QQ should be valid when no one else has higher spade pairs")
+	}
+
+	// Other player has both spade Ks - QQ pair is no longer max
+	otherHands2 := [][]Card{
+		{{Suit: SuitSpade, Rank: RankK, Copy: 0}, {Suit: SuitSpade, Rank: RankK, Copy: 1}},
+		{{Suit: SuitDiamond, Rank: RankA, Copy: 0}},
+		{},
+	}
+	if ValidatePlay(throw, nil, hand, otherHands2, trumpSuit, level) {
+		t.Error("Throw AA+QQ should be invalid when someone else has KK pair (beats QQ)")
+	}
+
+	// Single pair is always valid (no throw check for single group)
+	pair := []Card{
+		{Suit: SuitSpade, Rank: RankQ, Copy: 0},
+		{Suit: SuitSpade, Rank: RankQ, Copy: 1},
+	}
+	if !ValidatePlay(pair, nil, hand, otherHands2, trumpSuit, level) {
+		t.Error("Single pair lead should always be valid")
+	}
+
+	// Single card is always valid
+	single := []Card{{Suit: SuitSpade, Rank: RankA, Copy: 0}}
+	if !ValidatePlay(single, nil, hand, otherHands2, trumpSuit, level) {
+		t.Error("Single card lead should always be valid")
+	}
+
+	// Throw singles: A + Q - both must be max
+	throwSingles := []Card{
+		{Suit: SuitSpade, Rank: RankA, Copy: 0},
+		{Suit: SuitSpade, Rank: RankQ, Copy: 0},
+	}
+	// Valid when no one has spade A (player has both) and no one has spade > Q
+	if !ValidatePlay(throwSingles, nil, hand, otherHands, trumpSuit, level) {
+		t.Error("Throw A+Q singles should be valid when no one has higher")
+	}
+	// Invalid when someone has spade K (> Q)
+	if ValidatePlay(throwSingles, nil, hand, otherHands2, trumpSuit, level) {
+		t.Error("Throw A+Q singles should be invalid when someone has K (> Q)")
 	}
 }

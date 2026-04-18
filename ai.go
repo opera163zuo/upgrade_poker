@@ -77,7 +77,7 @@ func aiPlay(player *Player, trick *Trick, game *Game) []Card {
 
 	var cards []Card
 	if trick.PlayerCount() == 0 {
-		cards = aiLead(player, trumpSuit, level)
+		cards = aiLead(player, trumpSuit, level, game)
 	} else {
 		cards = aiFollow(player, trick, trumpSuit, level, game)
 	}
@@ -87,7 +87,15 @@ func aiPlay(player *Player, trick *Trick, game *Game) []Card {
 	if trick.PlayerCount() > 0 {
 		leadCards = trick.LeadCards()
 	}
-	if !ValidatePlay(cards, leadCards, player.Hand, trumpSuit, level) {
+
+	otherHands := make([][]Card, 0, 3)
+	for i := range game.Players {
+		if i != int(player.Position) {
+			otherHands = append(otherHands, game.Players[i].Hand)
+		}
+	}
+
+	if !ValidatePlay(cards, leadCards, player.Hand, otherHands, trumpSuit, level) {
 		cards = aiSafePlay(player, trick, trumpSuit, level)
 	}
 
@@ -140,8 +148,22 @@ func aiSafePlay(player *Player, trick *Trick, trumpSuit Suit, level Rank) []Card
 }
 
 // aiLead selects cards when AI is leading
-func aiLead(player *Player, trumpSuit Suit, level Rank) []Card {
+func aiLead(player *Player, trumpSuit Suit, level Rank, game *Game) []Card {
 	hand := player.Hand
+
+	// Build other players' hands for 甩牌
+	otherHands := make([][]Card, 0, 3)
+	for i := range game.Players {
+		if i != int(player.Position) {
+			otherHands = append(otherHands, game.Players[i].Hand)
+		}
+	}
+
+	// Try 甩牌: throw multiple unbeatable cards of the same suit
+	throwCards := aiTryThrow(hand, otherHands, trumpSuit, level)
+	if throwCards != nil {
+		return throwCards
+	}
 
 	// Strategy: lead with off-suit A or K to collect points
 	// Or lead with tractors if we have them
@@ -452,6 +474,88 @@ func aiFormKill(trumpCards []Card, needPairs, needTractors int, trumpSuit Suit, 
 	// Not enough pairs, play singles with trump
 	sortCardsByTrumpOrder(trumpCards, trumpSuit, level)
 	return []Card{trumpCards[len(trumpCards)-1]}
+}
+
+// aiTryThrow attempts to find a 甩牌 (throwing unbeatable cards)
+func aiTryThrow(hand []Card, otherHands [][]Card, trumpSuit Suit, level Rank) []Card {
+	// Group hand by effective suit
+	suitCards := make(map[Suit][]Card)
+	for _, c := range hand {
+		s := EffectiveSuit(c, trumpSuit, level)
+		suitCards[s] = append(suitCards[s], c)
+	}
+
+	var bestThrow []Card
+	bestPoints := 0
+
+	for suit, cards := range suitCards {
+		if len(cards) < 2 {
+			continue
+		}
+
+		var throwables []Card
+		usedRanks := make(map[Rank]bool)
+
+		// Check for unbeatable tractors
+		tractors := findTractorsInCards(cards, trumpSuit, level)
+		for _, t := range tractors {
+			if isMaxTractorCards(t, collectSuitCards(otherHands, suit, trumpSuit, level), trumpSuit, level) {
+				throwables = append(throwables, t...)
+				for _, c := range t {
+					usedRanks[c.Rank] = true
+				}
+			}
+		}
+
+		// Check for unbeatable pairs (not already in tractors)
+		pairs := findPairsInCards(cards, trumpSuit, level)
+		for _, p := range pairs {
+			if usedRanks[p[0].Rank] {
+				continue
+			}
+			if isMaxPairCards(p, collectSuitCards(otherHands, suit, trumpSuit, level), trumpSuit, level) {
+				throwables = append(throwables, p...)
+				usedRanks[p[0].Rank] = true
+			}
+		}
+
+		// Check for unbeatable singles (not already in pairs/tractors)
+		remaining := filterCards(cards, func(c Card) bool { return !usedRanks[c.Rank] })
+		for _, c := range remaining {
+			if isMaxSingleCard(c, collectSuitCards(otherHands, suit, trumpSuit, level), trumpSuit, level) {
+				throwables = append(throwables, c)
+			}
+		}
+
+		// Only throw if we have multiple groups (at least 2 cards that aren't just a single pair/tractor)
+		groups := AnalyzePlay(throwables, trumpSuit, level)
+		if len(groups) >= 2 && len(throwables) >= 2 {
+			points := 0
+			for _, c := range throwables {
+				points += c.Points()
+			}
+			// Prefer throws with more points, or more cards if points are equal
+			if points > bestPoints || (points == bestPoints && len(throwables) > len(bestThrow)) {
+				bestThrow = throwables
+				bestPoints = points
+			}
+		}
+	}
+
+	return bestThrow
+}
+
+// collectSuitCards collects all cards of a given effective suit from other players' hands
+func collectSuitCards(hands [][]Card, suit Suit, trumpSuit Suit, level Rank) []Card {
+	var result []Card
+	for _, hand := range hands {
+		for _, c := range hand {
+			if EffectiveSuit(c, trumpSuit, level) == suit {
+				result = append(result, c)
+			}
+		}
+	}
+	return result
 }
 
 // Helper functions

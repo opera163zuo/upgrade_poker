@@ -337,14 +337,14 @@ func getCardsOfRank(cards []Card, rank Rank, n int) []Card {
 }
 
 // ValidatePlay checks if the played cards are a legal play given the lead and the player's hand
-func ValidatePlay(played []Card, lead []Card, hand []Card, trumpSuit Suit, level Rank) bool {
+func ValidatePlay(played []Card, lead []Card, hand []Card, allHands [][]Card, trumpSuit Suit, level Rank) bool {
 	if len(played) == 0 {
 		return false
 	}
 
 	// If leading (no lead cards), any valid combination is OK
 	if len(lead) == 0 {
-		return validateLeading(played, trumpSuit, level)
+		return validateLeading(played, allHands, trumpSuit, level)
 	}
 
 	// Following: must follow suit and match the structure of the lead
@@ -352,7 +352,7 @@ func ValidatePlay(played []Card, lead []Card, hand []Card, trumpSuit Suit, level
 }
 
 // validateLeading checks if a leading play is valid (甩牌 rules)
-func validateLeading(cards []Card, trumpSuit Suit, level Rank) bool {
+func validateLeading(cards []Card, allHands [][]Card, trumpSuit Suit, level Rank) bool {
 	// Leading play: all cards must be of the same effective suit
 	// (or all trump), and form valid groups (singles, pairs, tractors)
 
@@ -374,7 +374,26 @@ func validateLeading(cards []Card, trumpSuit Suit, level Rank) bool {
 	for _, g := range groups {
 		totalCards += len(g.Cards)
 	}
-	return totalCards == len(cards)
+	if totalCards != len(cards) {
+		return false
+	}
+
+	// Single group (single card, one pair, or one tractor) is always valid
+	if len(groups) <= 1 {
+		return true
+	}
+
+	// Multiple groups: 甩牌 - each group must be the maximum remaining
+	if allHands == nil {
+		return true
+	}
+
+	for _, g := range groups {
+		if !isMaxGroup(g, allHands, trumpSuit, level) {
+			return false
+		}
+	}
+	return true
 }
 
 // validateFollowing checks if a following play is valid
@@ -580,10 +599,11 @@ func DetermineTrickWinner(plays [][]Card, trumpSuit Suit, level Rank) int {
 
 // comparePlays compares two plays to determine which is stronger
 // Returns: 1 if a > b, -1 if a < b, 0 if equal
+// Rules:
+//   1. Trump beats non-trump (毙牌)
+//   2. Among same trump/non-trump: higher play type wins (tractor > pair > singles)
+//   3. Same type: compare best card
 func comparePlays(a, b []Card, trumpSuit Suit, level Rank, leadSuit Suit) int {
-	aBest := bestCardInPlay(a, trumpSuit, level, leadSuit)
-	bBest := bestCardInPlay(b, trumpSuit, level, leadSuit)
-
 	// If either is empty, the non-empty one wins
 	if len(a) == 0 && len(b) == 0 {
 		return 0
@@ -595,7 +615,91 @@ func comparePlays(a, b []Card, trumpSuit Suit, level Rank, leadSuit Suit) int {
 		return 1
 	}
 
+	aIsTrump := isAllTrump(a, trumpSuit, level)
+	bIsTrump := isAllTrump(b, trumpSuit, level)
+
+	// Trump beats non-trump
+	if aIsTrump && !bIsTrump {
+		return 1
+	}
+	if !aIsTrump && bIsTrump {
+		return -1
+	}
+
+	// Both trump or both non-trump: compare play types, then best card
+	aType := playType(a, trumpSuit, level)
+	bType := playType(b, trumpSuit, level)
+
+	if aType != bType {
+		if aType > bType {
+			return 1
+		}
+		return -1
+	}
+
+	// Same play type: compare best card
+	aBest := bestCardInPlay(a, trumpSuit, level, leadSuit)
+	bBest := bestCardInPlay(b, trumpSuit, level, leadSuit)
 	return CompareCards(aBest, bBest, trumpSuit, level, leadSuit)
+}
+
+// isAllTrump checks if all cards in a play are trump
+func isAllTrump(cards []Card, trumpSuit Suit, level Rank) bool {
+	for _, c := range cards {
+		if !IsTrump(c, trumpSuit, level) {
+			return false
+		}
+	}
+	return true
+}
+
+// playType returns the type strength of a play:
+// 3 = tractor (拖拉机), 2 = pair (对), 1 = singles (散牌)
+func playType(cards []Card, trumpSuit Suit, level Rank) int {
+	if len(cards) < 2 {
+		return 1
+	}
+	// Count cards by effective rank within effective suit
+	rankCount := make(map[Rank]int)
+	for _, c := range cards {
+		rankCount[c.Rank]++
+	}
+
+	// Count pairs
+	numPairs := 0
+	for _, count := range rankCount {
+		if count >= 2 {
+			numPairs++
+		}
+	}
+
+	if numPairs >= 2 {
+		// Check if pairs form a tractor (consecutive)
+		var pairRanks []Rank
+		for r, count := range rankCount {
+			if count >= 2 {
+				pairRanks = append(pairRanks, r)
+			}
+		}
+		// Check for at least one consecutive pair
+		for i := 0; i < len(pairRanks)-1; i++ {
+			for j := i + 1; j < len(pairRanks); j++ {
+				if areConsecutiveRanks(pairRanks[i], pairRanks[j], trumpSuit, level) {
+					return 3 // tractor
+				}
+			}
+		}
+	}
+
+	if numPairs >= 1 && len(cards) == 2 {
+		return 2 // pair
+	}
+	if numPairs >= 1 {
+		// Multi-pair but not consecutive = treat as pair level
+		return 2
+	}
+
+	return 1 // singles
 }
 
 // bestCardInPlay returns the strongest card in a play
@@ -646,6 +750,96 @@ func CalculateBottomMultiplier(winningPlay []Card, trumpSuit Suit, level Rank) i
 		result *= 2
 	}
 	return result
+}
+
+// isMaxGroup checks if a card group is unbeatable among all hands
+func isMaxGroup(g CardGroup, allHands [][]Card, trumpSuit Suit, level Rank) bool {
+	// Collect all cards of the same effective suit from all hands
+	var otherCards []Card
+	for _, hand := range allHands {
+		for _, c := range hand {
+			if EffectiveSuit(c, trumpSuit, level) == g.Suit {
+				otherCards = append(otherCards, c)
+			}
+		}
+	}
+
+	switch {
+	case g.IsSingle:
+		return isMaxSingleCard(g.Cards[0], otherCards, trumpSuit, level)
+	case g.IsPair:
+		return isMaxPairCards(g.Cards, otherCards, trumpSuit, level)
+	case g.IsTractor:
+		return isMaxTractorCards(g.Cards, otherCards, trumpSuit, level)
+	}
+	return true
+}
+
+// cardRankOrder returns a comparable order for a card within its effective suit
+func cardRankOrder(card Card, trumpSuit Suit, level Rank) int {
+	if IsTrump(card, trumpSuit, level) {
+		return TrumpOrder(card, trumpSuit, level)
+	}
+	return int(card.Rank)
+}
+
+// isMaxSingleCard checks if a single card is the highest of its effective suit
+func isMaxSingleCard(card Card, otherCards []Card, trumpSuit Suit, level Rank) bool {
+	order := cardRankOrder(card, trumpSuit, level)
+	for _, c := range otherCards {
+		if cardRankOrder(c, trumpSuit, level) > order {
+			return false
+		}
+	}
+	return true
+}
+
+// isMaxPairCards checks if a pair is the highest pair of its effective suit
+func isMaxPairCards(pairCards []Card, otherCards []Card, trumpSuit Suit, level Rank) bool {
+	pairOrder := cardRankOrder(pairCards[0], trumpSuit, level)
+	for _, c := range pairCards[1:] {
+		if o := cardRankOrder(c, trumpSuit, level); o > pairOrder {
+			pairOrder = o
+		}
+	}
+
+	pairs := findPairsInCards(otherCards, trumpSuit, level)
+	for _, p := range pairs {
+		otherOrder := cardRankOrder(p[0], trumpSuit, level)
+		for _, c := range p[1:] {
+			if o := cardRankOrder(c, trumpSuit, level); o > otherOrder {
+				otherOrder = o
+			}
+		}
+		if otherOrder > pairOrder {
+			return false
+		}
+	}
+	return true
+}
+
+// isMaxTractorCards checks if a tractor is the highest tractor of its effective suit
+func isMaxTractorCards(tractorCards []Card, otherCards []Card, trumpSuit Suit, level Rank) bool {
+	ourHighest := cardRankOrder(tractorCards[0], trumpSuit, level)
+	for _, c := range tractorCards {
+		if o := cardRankOrder(c, trumpSuit, level); o > ourHighest {
+			ourHighest = o
+		}
+	}
+
+	otherTractors := findTractorsInCards(otherCards, trumpSuit, level)
+	for _, t := range otherTractors {
+		tHighest := cardRankOrder(t[0], trumpSuit, level)
+		for _, c := range t {
+			if o := cardRankOrder(c, trumpSuit, level); o > tHighest {
+				tHighest = o
+			}
+		}
+		if tHighest > ourHighest {
+			return false
+		}
+	}
+	return true
 }
 
 func min(a, b int) int {

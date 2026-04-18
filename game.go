@@ -96,6 +96,104 @@ func (g *Game) Deal() {
 	copy(g.BottomCards, g.Deck[idx:idx+8])
 }
 
+// DealAnimated deals cards one by one with animation
+// DealAnimated deals cards one by one with animation
+// During dealing, if human can bid (亮主), pause and ask
+func (g *Game) DealAnimated() {
+	g.Deck = NewDeck()
+	ShuffleDeck(g.Deck, g.rng)
+
+	for i := range g.Players {
+		g.Players[i].Hand = make([]Card, 0)
+	}
+	g.tui.dealCounts = [4]int{}
+	g.tui.SetPhase(UIPhaseDealing)
+	g.CurrentBid = nil
+
+	level := g.DealerLevel()
+	humanAsked := false
+
+	idx := 0
+	for round := 0; round < 25; round++ {
+		for player := 0; player < 4; player++ {
+			g.Players[player].AddCard(g.Deck[idx])
+			g.tui.dealCounts[player]++
+			idx++
+		}
+		g.tui.SleepForRedraw(80 * time.Millisecond)
+
+		// After each round, check if human (South) can bid
+		if !humanAsked && round >= 2 {
+			human := g.Players[PositionSouth]
+			possibleBids := CanBid(human, level)
+			var validBids []Bid
+			for _, bid := range possibleBids {
+				if g.CurrentBid == nil || CanOverrideBid(bid, *g.CurrentBid) {
+					validBids = append(validBids, bid)
+				}
+			}
+			if len(validBids) > 0 {
+				g.tui.bidOptions = validBids
+				g.tui.SetPhase(UIPhaseBidding)
+
+				suitName := "无主"
+				if validBids[0].Suit != SuitJoker {
+					suitName = validBids[0].Suit.String()
+				}
+				g.tui.SetMessage(fmt.Sprintf("你可以亮主：%s %s", validBids[0].Type.String(), suitName),
+					[]Button{
+						{Label: "[B:亮主]", Action: "bid"},
+						{Label: "[P:不亮]", Action: "pass"},
+					})
+
+				for {
+					action := g.tui.WaitForAction()
+					if action.Type == "bid" && len(validBids) > 0 {
+						bid := validBids[0]
+						bid.Player = PositionSouth
+						g.CurrentBid = &bid
+						humanAsked = true
+						break
+					} else if action.Type == "pass" {
+						humanAsked = true
+						break
+					}
+				}
+				g.tui.SetMessage("", nil)
+				g.tui.SetPhase(UIPhaseDealing)
+			}
+		}
+
+		// AI players check for bid during dealing (only override if higher)
+		for p := 0; p < 4; p++ {
+			pos := PlayerPosition(p)
+			if g.Players[pos].IsHuman {
+				continue
+			}
+			bid := g.aiBidSimple(g.Players[pos], func() []Bid {
+				possibleBids := CanBid(g.Players[pos], level)
+				var vb []Bid
+				for _, b := range possibleBids {
+					if g.CurrentBid == nil || CanOverrideBid(b, *g.CurrentBid) {
+						vb = append(vb, b)
+					}
+				}
+				return vb
+			}())
+			if bid != nil {
+				g.CurrentBid = bid
+			}
+		}
+	}
+
+	g.BottomCards = make([]Card, 8)
+	copy(g.BottomCards, g.Deck[idx:idx+8])
+
+	// Brief pause to show final state
+	g.tui.SleepForRedraw(300 * time.Millisecond)
+}
+
+
 // RunBiddingPhase handles bidding with TUI
 func (g *Game) RunBiddingPhase() {
 	level := g.DealerLevel()
@@ -151,9 +249,6 @@ func (g *Game) RunBiddingPhase() {
 	}
 
 	g.TrumpSuit = GetTrumpSuit(g.CurrentBid)
-	if g.CurrentBid != nil {
-		g.Dealer = g.CurrentBid.Player
-	}
 
 	for _, p := range g.Players {
 		p.SortHand(g.TrumpSuit, level)
@@ -238,7 +333,9 @@ func (g *Game) PlayTrickFromLead(leadPlayer PlayerPosition) PlayerPosition {
 
 		var cards []Card
 		if player.IsHuman {
+			g.tui.waitingForHuman = true
 			cards = g.humanPlayTUI(player, trick)
+			g.tui.waitingForHuman = false
 		} else {
 			// Show thinking animation for AI
 			g.tui.thinkingPos = currentPlayer
@@ -279,6 +376,14 @@ func (g *Game) humanPlayTUI(player *Player, trick *Trick) []Card {
 	level := g.DealerLevel()
 	g.tui.SetPhase(UIPhasePlaying)
 
+	// Build other players' hands for 甩牌 validation
+	otherHands := make([][]Card, 0, 3)
+	for i := range g.Players {
+		if i != int(player.Position) {
+			otherHands = append(otherHands, g.Players[i].Hand)
+		}
+	}
+
 	for {
 		action := g.tui.WaitForAction()
 		if action.Type == "play" && len(action.CardIdx) > 0 {
@@ -294,7 +399,7 @@ func (g *Game) humanPlayTUI(player *Player, trick *Trick) []Card {
 				leadCards = trick.LeadCards()
 			}
 
-			if ValidatePlay(cards, leadCards, player.Hand, g.TrumpSuit, level) {
+			if ValidatePlay(cards, leadCards, player.Hand, otherHands, g.TrumpSuit, level) {
 				g.tui.selected = make(map[int]bool)
 				return cards
 			}
@@ -442,7 +547,7 @@ func (g *Game) RunTUI(tui *TUI) {
 	g.Phase = PhaseDealing
 
 	for g.Phase != PhaseGameOver {
-		g.Deal()
+		g.DealAnimated()
 
 		g.tui.SetPhase(UIPhaseBidding)
 		g.RunBiddingPhase()

@@ -15,6 +15,7 @@ type UIPhase int
 
 const (
 	UIPhaseWelcome   UIPhase = iota
+	UIPhaseDealing
 	UIPhaseBidding
 	UIPhaseDiscard
 	UIPhasePlaying
@@ -86,6 +87,12 @@ type TUI struct {
 
 		// Quit flag
 		quitting bool
+
+		// Dealing animation
+		dealCounts [4]int
+
+		// Waiting for human to play
+		waitingForHuman bool
 
 		lastEscTime time.Time
 }
@@ -170,6 +177,8 @@ func (t *TUI) Run() {
 			} else {
 				t.handleKey(ev)
 			}
+		case *tcell.EventMouse:
+			t.handleMouse(ev)
 		case *tcell.EventInterrupt:
 			// Redraw triggered by game goroutine
 			t.draw()
@@ -397,6 +406,7 @@ func (t *TUI) submitSelection() {
 func (t *TUI) WaitForAction() UserAction {
 	action := <-t.actionChan
 	if action.Type == "quit" {
+		t.screen.Fini()
 		os.Exit(0)
 	}
 	return action
@@ -532,6 +542,20 @@ func (t *TUI) drawNorthPlayer() {
 	}
 	t.drawString(cx-len(label)/2, 2, label, style)
 
+
+		// Dealing animation: show card backs
+		if t.phase == UIPhaseDealing {
+			count := t.dealCounts[PositionNorth]
+			maxShow := 7
+			if count > maxShow {
+				count = maxShow
+			}
+			startX := cx - count*3
+			for k := 0; k < count; k++ {
+				t.drawCardBack(startX+k*6, 4)
+			}
+			return
+		}
 		// Thinking animation
 		if t.thinking && t.thinkingPos == PositionNorth {
 			t.drawString(cx-6, 4, "思考中...", tcell.StyleDefault.Foreground(tcell.ColorYellow))
@@ -559,6 +583,18 @@ func (t *TUI) drawWestPlayer() {
 	}
 	t.drawString(x, t.height/2-2, label, style)
 
+		// Dealing animation: show card backs
+		if t.phase == UIPhaseDealing {
+			count := t.dealCounts[PositionWest]
+			maxShow := 5
+			if count > maxShow {
+				count = maxShow
+			}
+			for k := 0; k < count; k++ {
+				t.drawCardBack(x, t.height/2-k)
+			}
+			return
+		}
 	// Thinking animation
 	if t.thinking && t.thinkingPos == PositionWest {
 		t.drawString(x, t.height/2, "思考中...", tcell.StyleDefault.Foreground(tcell.ColorYellow))
@@ -586,6 +622,18 @@ func (t *TUI) drawEastPlayer() {
 	}
 	t.drawString(x, t.height/2-2, label, style)
 
+		// Dealing animation: show card backs
+		if t.phase == UIPhaseDealing {
+			count := t.dealCounts[PositionEast]
+			maxShow := 5
+			if count > maxShow {
+				count = maxShow
+			}
+			for k := 0; k < count; k++ {
+				t.drawCardBack(x, t.height/2-k)
+			}
+			return
+		}
 	// Thinking animation
 	if t.thinking && t.thinkingPos == PositionEast {
 		t.drawString(x, t.height/2, "思考中...", tcell.StyleDefault.Foreground(tcell.ColorYellow))
@@ -667,6 +715,28 @@ func (t *TUI) drawSouthHand() {
 	g := t.game
 	player := g.Players[PositionSouth]
 	if len(player.Hand) == 0 {
+			return
+		}
+
+	// Dealing animation: show dealt cards so far
+	if t.phase == UIPhaseDealing {
+		count := t.dealCounts[PositionSouth]
+		if count == 0 {
+			return
+		}
+		cardW := 5
+		gap := 1
+		handY := t.height - 6
+		label := "南(你)"
+		t.drawString(t.width/2-runewidth.StringWidth(label)/2, handY-2, label, tcell.StyleDefault.Bold(true))
+		for k := 0; k < count; k++ {
+			x := 2 + k*(cardW+gap)
+			if x+cardW > t.width-2 {
+				break
+			}
+				card := player.Hand[k]
+				t.drawCard(x, handY, card, false, false, false)
+		}
 		return
 	}
 
@@ -695,6 +765,12 @@ func (t *TUI) drawSouthHand() {
 	// Label
 	label := "南(你)"
 	t.drawString(t.width/2-runewidth.StringWidth(label)/2, handY-2, label, tcell.StyleDefault.Bold(true))
+
+		// Show waiting indicator when it's human's turn
+		if t.waitingForHuman {
+			waitText := "等你出牌..."
+			t.drawString(t.width/2-runewidth.StringWidth(waitText)/2, handY-4, waitText, tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true))
+		}
 
 		// Build draw order: trump first, then other suits
 		drawOrder := make([]Card, 0, len(player.Hand))
@@ -800,6 +876,29 @@ func (t *TUI) drawCard(x, y int, card Card, selected, isTrump, isCursor bool) {
 	t.screen.SetContent(x+2, y+2, '\u2500', nil, borderStyle)
 	t.screen.SetContent(x+3, y+2, '\u2500', nil, borderStyle)
 	t.screen.SetContent(x+4, y+2, '\u2518', nil, borderStyle)
+}
+
+// drawCardBack draws a face-down card at (x, y), 5 wide x 3 tall
+func (t *TUI) drawCardBack(x, y int) {
+	style := tcell.StyleDefault.Foreground(tcell.ColorDarkCyan).Background(tcell.NewRGBColor(0, 40, 60))
+	// Top border
+	t.screen.SetContent(x, y, '┌', nil, style)
+	t.screen.SetContent(x+1, y, '─', nil, style)
+	t.screen.SetContent(x+2, y, '─', nil, style)
+	t.screen.SetContent(x+3, y, '─', nil, style)
+	t.screen.SetContent(x+4, y, '┐', nil, style)
+	// Content
+	t.screen.SetContent(x, y+1, '│', nil, style)
+	t.screen.SetContent(x+1, y+1, '░', nil, style)
+	t.screen.SetContent(x+2, y+1, '░', nil, style)
+	t.screen.SetContent(x+3, y+1, '░', nil, style)
+	t.screen.SetContent(x+4, y+1, '│', nil, style)
+	// Bottom border
+	t.screen.SetContent(x, y+2, '└', nil, style)
+	t.screen.SetContent(x+1, y+2, '─', nil, style)
+	t.screen.SetContent(x+2, y+2, '─', nil, style)
+	t.screen.SetContent(x+3, y+2, '─', nil, style)
+	t.screen.SetContent(x+4, y+2, '┘', nil, style)
 }
 
 // drawCardsRow draws a row of cards (for AI plays)
