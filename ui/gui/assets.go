@@ -113,14 +113,37 @@ func EnsureImagesLoaded() error {
 		return nil
 	}
 	dir := assetDir()
-	for i := 0; i < 54; i++ {
-		path := filepath.Join(dir, "cards", "faces", fmt.Sprintf("%d.png", i))
-		img, err := loadImage(path)
-		if err != nil {
-			return fmt.Errorf("load card %d: %w", i, err)
+
+	// 先尝试加载高清牌图（500x726，文件名如 10♠.png）
+	hiresDir := filepath.Join(dir, "cards", "hires")
+	if info, err := os.Stat(hiresDir); err == nil && info.IsDir() {
+		// 两副牌需要两个副本，直接加载0-53
+		for i := 0; i < 54; i++ {
+			filename := cardNumberToHiresName(i)
+			path := filepath.Join(hiresDir, filename)
+			img, err := loadImage(path)
+			if err != nil {
+				// 回退到faces目录
+				path = filepath.Join(dir, "cards", "faces", fmt.Sprintf("%d.png", i))
+				img, err = loadImage(path)
+				if err != nil {
+					return fmt.Errorf("load card %d: %w", i, err)
+				}
+			}
+			cardImages[i] = img
 		}
-		cardImages[i] = img
+	} else {
+		// 旧版faces目录编号牌图
+		for i := 0; i < 54; i++ {
+			path := filepath.Join(dir, "cards", "faces", fmt.Sprintf("%d.png", i))
+			img, err := loadImage(path)
+			if err != nil {
+				return fmt.Errorf("load card %d: %w", i, err)
+			}
+			cardImages[i] = img
+		}
 	}
+	// 牌背
 	backNames := []string{"back.png", "back2.png", "back3.png"}
 	for i, name := range backNames {
 		path := filepath.Join(dir, "cards", "backs", name)
@@ -132,6 +155,20 @@ func EnsureImagesLoaded() error {
 	}
 	cardImagesLoaded = true
 	return nil
+}
+
+// cardNumberToHiresName converts C# card number 0-53 to high-res filename
+// 0-12=♥, 13-25=♠, 26-38=♦, 39-51=♣, 52=小王, 53=大王
+func cardNumberToHiresName(n int) string {
+	if n >= 52 {
+		if n == 52 { return "BJ.png" } // black joker
+		if n == 53 { return "RJ.png" } // red joker
+	}
+	suitIdx := n / 13
+	rankIdx := n % 13
+	suits := []string{"♥", "♠", "♦", "♣"}
+	ranks := []string{"2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"}
+	return ranks[rankIdx] + suits[suitIdx] + ".png"
 }
 
 func loadImage(path string) (*ebiten.Image, error) {
