@@ -141,7 +141,7 @@ func (g *GUI) drawCenter(screen *ebiten.Image, view baseui.TableView) {
 		key string
 		x   int
 		y   int
-	}{{"北", 250, 160}, {"西", 176, 222}, {"东", 388, 222}, {"南", 250, 286}}
+	}{{"北(AI)", 250, 160}, {"西(AI)", 176, 222}, {"东(AI)", 388, 222}, {"南(你)", 250, 286}}
 	for _, p := range positions {
 		cards := view.CurrentTrick[p.key]
 		for i, c := range cards {
