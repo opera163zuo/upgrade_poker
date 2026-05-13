@@ -1,5 +1,7 @@
 package main
 
+var Version = "dev"
+
 import (
 	"flag"
 	"fmt"
@@ -10,8 +12,15 @@ import (
 )
 
 func main() {
+	showVersion := flag.Bool("version", false, "show version")
 	uiMode := flag.String("ui", "tui", "ui mode: tui or gui")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("upgrade_poker %s
+", Version)
+		os.Exit(0)
+	}
 
 	var game *Game
 	var gameUI interface {
