@@ -147,14 +147,20 @@ func loadImage(path string) (*ebiten.Image, error) {
 }
 
 func CardFaceImage(suit, rank int) *ebiten.Image {
-	if !cardImagesLoaded { return nil }
+	if !cardImagesLoaded {
+		return nil
+	}
 	idx := GoCardToCSharpNumber(suit, rank)
-	if idx < 0 || idx >= 54 { return nil }
+	if idx < 0 || idx >= 54 {
+		return nil
+	}
 	return cardImages[idx]
 }
 
 func CardBackImage(index int) *ebiten.Image {
-	if !cardImagesLoaded || index < 0 || index > 2 { return cardImages[54] }
+	if !cardImagesLoaded || index < 0 || index > 2 {
+		return cardImages[54]
+	}
 	return cardImages[54+index]
 }
 
@@ -162,8 +168,12 @@ func IsImageLoaded() bool { return cardImagesLoaded }
 
 func GoCardToCSharpNumber(suit, rank int) int {
 	if rank >= 15 {
-		if rank == 15 { return 52 }
-		if rank == 16 { return 53 }
+		if rank == 15 {
+			return 52
+		}
+		if rank == 16 {
+			return 53
+		}
 	}
 	csharpSuit := []int{2, 1, 3, 4}[suit]
 	csharpRank := rank - 2
@@ -171,6 +181,8 @@ func GoCardToCSharpNumber(suit, rank int) int {
 }
 
 func FreeImages() {
-	for i := range cardImages { cardImages[i] = nil }
+	for i := range cardImages {
+		cardImages[i] = nil
+	}
 	cardImagesLoaded = false
 }

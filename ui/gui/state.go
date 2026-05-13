@@ -15,9 +15,11 @@ type state struct {
 	cardRects   []rect
 	buttonRects []buttonRect
 	lastClick   time.Time
+	lastCardIdx int
 }
 
 type buttonRect struct {
 	rect
-	action baseui.ActionType
+	action  baseui.UIAction
+	enabled bool
 }

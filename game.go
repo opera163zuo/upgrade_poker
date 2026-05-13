@@ -154,25 +154,18 @@ func (g *Game) DealAnimated() {
 			if len(validBids) > 0 {
 				g.setBidOptions(validBids)
 				g.setPhase(baseui.PhaseBidding)
-
-				suitName := "无主"
-				if validBids[0].Suit != SuitJoker {
-					suitName = validBids[0].Suit.String()
-				}
-				g.showMessage(fmt.Sprintf("你可以亮主：%s %s", validBids[0].Type.String(), suitName),
-					[]baseui.ButtonSpec{
-						{ID: string(baseui.ActionBid), Label: "[B:亮主]", Enabled: true},
-						{ID: string(baseui.ActionPass), Label: "[P:不亮]", Enabled: true},
-					})
+				g.showMessage("请选择亮主方式", nil)
 
 				for {
 					action := g.ui.WaitAction()
-					if action.Type == baseui.ActionBid && len(validBids) > 0 {
-						bid := validBids[0]
-						bid.Player = PositionSouth
-						g.CurrentBid = &bid
-						humanAsked = true
-						break
+					if action.Type == baseui.ActionBid {
+						if bid := g.matchBidAction(validBids, action); bid != nil {
+							b := *bid
+							b.Player = PositionSouth
+							g.CurrentBid = &b
+							humanAsked = true
+							break
+						}
 					} else if action.Type == baseui.ActionPass {
 						humanAsked = true
 						break
@@ -235,23 +228,16 @@ func (g *Game) RunBiddingPhase() {
 		if player.IsHuman {
 			g.setBidOptions(validBids)
 			g.setPhase(baseui.PhaseBidding)
-
-			suitName := "无主"
-			if validBids[0].Suit != SuitJoker {
-				suitName = validBids[0].Suit.String()
-			}
-			g.showMessage(fmt.Sprintf("你可以亮主：%s %s\n或其他选择", validBids[0].Type.String(), suitName),
-				[]baseui.ButtonSpec{
-					{ID: string(baseui.ActionBid), Label: "[B:亮主]", Enabled: true},
-					{ID: string(baseui.ActionPass), Label: "[P:不亮]", Enabled: true},
-				})
+			g.showMessage("请选择亮主方式", nil)
 
 			for {
 				action := g.ui.WaitAction()
-				if action.Type == baseui.ActionBid && len(validBids) > 0 {
-					bid := validBids[0]
-					g.CurrentBid = &bid
-					break
+				if action.Type == baseui.ActionBid {
+					if bid := g.matchBidAction(validBids, action); bid != nil {
+						b := *bid
+						g.CurrentBid = &b
+						break
+					}
 				} else if action.Type == baseui.ActionPass {
 					break
 				}
@@ -266,6 +252,9 @@ func (g *Game) RunBiddingPhase() {
 		}
 	}
 
+	if g.CurrentBid != nil {
+		g.Dealer = g.CurrentBid.Player
+	}
 	g.TrumpSuit = GetTrumpSuit(g.CurrentBid)
 
 	for _, p := range g.Players {
@@ -309,7 +298,7 @@ func (g *Game) DiscardBottom() {
 		dealer.Hand = append(dealer.Hand, g.BottomCards...)
 		dealer.SortHand(g.TrumpSuit, g.DealerLevel())
 
-		// Let human choose 8 cards to discard via TUI
+		// Let human choose 8 cards to discard via UI
 		g.uiDiscardCount = 8
 		g.setPhase(baseui.PhaseDiscard)
 
@@ -329,6 +318,7 @@ func (g *Game) DiscardBottom() {
 				}
 			}
 		}
+		g.uiDiscardCount = 0
 		g.setPhase(baseui.PhasePlaying)
 	} else {
 		dealer.Hand = append(dealer.Hand, g.BottomCards...)
@@ -454,14 +444,15 @@ func (g *Game) PlayHand() {
 		winnerTeam := PlayerTeam(winner)
 		g.TeamScore[winnerTeam] += points
 
-		// Show trick result for 5 seconds then auto-continue
+		// Show trick result briefly before continuing
 		g.uiTrickWinner = winner
 		g.uiTrickPoints = points
-		g.render()
+		g.uiMessage = fmt.Sprintf("本轮 %s 赢得 %d 分", formatPosition(winner), points)
 		g.setPhase(baseui.PhaseWaitTrick)
 		g.ui.SleepForRedraw(3 * time.Second)
 
 		// Clear trick display and continue
+		g.uiMessage = ""
 		g.CurrentTrick = nil
 		leadPlayer = winner
 	}
@@ -617,6 +608,20 @@ func (g *Game) setBidOptions(bids []Bid) {
 		g.uiBidChoices = append(g.uiBidChoices, baseui.BidChoice{Type: bid.Type.String(), Suit: bid.Suit.String(), Text: bid.Type.String() + " " + suitName})
 	}
 	g.render()
+}
+
+func (g *Game) matchBidAction(validBids []Bid, action baseui.UIAction) *Bid {
+	for _, bid := range validBids {
+		if bid.Type.String() == action.BidType && bid.Suit.String() == action.BidSuit {
+			b := bid
+			return &b
+		}
+	}
+	if len(validBids) > 0 {
+		b := validBids[0]
+		return &b
+	}
+	return nil
 }
 
 func (g *Game) clearSelection() {
