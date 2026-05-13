@@ -94,6 +94,27 @@ func (g *Game) OpponentTeam() Team {
 	return Team0
 }
 
+func (g *Game) resetForNewMatch() {
+	ng := NewGame(g.ui)
+	*g = *ng
+}
+
+func (g *Game) waitAction() (baseui.UIAction, bool) {
+	action := g.ui.WaitAction()
+	if action.Type == baseui.ActionRestart {
+		return action, true
+	}
+	return action, false
+}
+
+func (g *Game) waitActionOrTimeout(d time.Duration) (baseui.UIAction, bool, bool) {
+	action, timedOut := g.ui.WaitActionOrTimeout(d)
+	if action.Type == baseui.ActionRestart {
+		return action, false, true
+	}
+	return action, timedOut, false
+}
+
 func (g *Game) Deal() {
 	g.Deck = NewDeck()
 	ShuffleDeck(g.Deck, g.rng)
@@ -117,7 +138,7 @@ func (g *Game) Deal() {
 // DealAnimated deals cards one by one with animation
 // DealAnimated deals cards one by one with animation
 // During dealing, if human can bid (亮主), pause and ask
-func (g *Game) DealAnimated() {
+func (g *Game) DealAnimated() bool {
 	g.Deck = NewDeck()
 	ShuffleDeck(g.Deck, g.rng)
 
@@ -139,7 +160,7 @@ func (g *Game) DealAnimated() {
 			g.uiDealCounts[player]++
 			idx++
 		}
-		g.ui.SleepForRedraw(80 * time.Millisecond)
+		g.ui.SleepForRedraw(40 * time.Millisecond)
 
 		// After each round, check if human (South) can bid
 		if !humanAsked && round >= 2 {
@@ -157,7 +178,10 @@ func (g *Game) DealAnimated() {
 				g.showMessage("请选择亮主方式", nil)
 
 				for {
-					action := g.ui.WaitAction()
+					action, restarted := g.waitAction()
+					if restarted {
+						return true
+					}
 					if action.Type == baseui.ActionBid {
 						if bid := g.matchBidAction(validBids, action); bid != nil {
 							b := *bid
@@ -202,11 +226,12 @@ func (g *Game) DealAnimated() {
 	copy(g.BottomCards, g.Deck[idx:idx+8])
 
 	// Brief pause to show final state
-	g.ui.SleepForRedraw(300 * time.Millisecond)
+	g.ui.SleepForRedraw(150 * time.Millisecond)
+	return false
 }
 
 // RunBiddingPhase handles bidding with TUI
-func (g *Game) RunBiddingPhase() {
+func (g *Game) RunBiddingPhase() bool {
 	level := g.DealerLevel()
 
 	for i := 0; i < 4; i++ {
@@ -231,7 +256,10 @@ func (g *Game) RunBiddingPhase() {
 			g.showMessage("请选择亮主方式", nil)
 
 			for {
-				action := g.ui.WaitAction()
+				action, restarted := g.waitAction()
+				if restarted {
+					return true
+				}
 				if action.Type == baseui.ActionBid {
 					if bid := g.matchBidAction(validBids, action); bid != nil {
 						b := *bid
@@ -260,6 +288,7 @@ func (g *Game) RunBiddingPhase() {
 	for _, p := range g.Players {
 		p.SortHand(g.TrumpSuit, level)
 	}
+	return false
 }
 
 func (g *Game) aiBidSimple(player *Player, validBids []Bid) *Bid {
@@ -285,14 +314,16 @@ func (g *Game) aiBidSimple(player *Player, validBids []Bid) *Bid {
 }
 
 // DiscardBottom handles the dealer picking up and discarding bottom cards
-func (g *Game) DiscardBottom() {
+func (g *Game) DiscardBottom() bool {
 	dealer := g.Players[g.Dealer]
 
 	if dealer.IsHuman {
 		// Show bottom cards
 		g.showMessage(fmt.Sprintf("底牌：\n%s", cardsToString(g.BottomCards)),
 			[]baseui.ButtonSpec{{ID: string(baseui.ActionConfirm), Label: "[Enter:确认]", Enabled: true}})
-		g.ui.WaitAction()
+		if _, restarted := g.waitAction(); restarted {
+			return true
+		}
 		g.showMessage("", nil)
 
 		dealer.Hand = append(dealer.Hand, g.BottomCards...)
@@ -303,7 +334,10 @@ func (g *Game) DiscardBottom() {
 		g.setPhase(baseui.PhaseDiscard)
 
 		for {
-			action := g.ui.WaitAction()
+			action, restarted := g.waitAction()
+			if restarted {
+				return true
+			}
 			if action.Type == baseui.ActionPlay && len(action.CardIdx) == 8 {
 				var discards []Card
 				for _, idx := range action.CardIdx {
@@ -327,10 +361,11 @@ func (g *Game) DiscardBottom() {
 	}
 
 	dealer.SortHand(g.TrumpSuit, g.DealerLevel())
+	return false
 }
 
 // PlayTrickFromLead handles one trick
-func (g *Game) PlayTrickFromLead(leadPlayer PlayerPosition) PlayerPosition {
+func (g *Game) PlayTrickFromLead(leadPlayer PlayerPosition) (PlayerPosition, bool) {
 	level := g.DealerLevel()
 	trick := NewTrick(leadPlayer, g.TrumpSuit, level)
 	g.CurrentTrick = trick
@@ -340,18 +375,23 @@ func (g *Game) PlayTrickFromLead(leadPlayer PlayerPosition) PlayerPosition {
 		player := g.Players[currentPlayer]
 
 		var cards []Card
+		var restarted bool
 		if player.IsHuman {
 			g.uiWaitingForHuman = true
 			g.render()
-			cards = g.humanPlayTUI(player, trick)
+			cards, restarted = g.humanPlayTUI(player, trick)
 			g.uiWaitingForHuman = false
+			if restarted {
+				g.render()
+				return leadPlayer, true
+			}
 			g.render()
 		} else {
 			// Show thinking animation for AI
 			g.uiThinkingPos = currentPlayer
 			g.uiThinking = true
 			g.render()
-			g.ui.SleepForRedraw(600 * time.Millisecond)
+			g.ui.SleepForRedraw(300 * time.Millisecond)
 			g.uiThinking = false
 			g.render()
 			cards = aiPlay(player, trick, g)
@@ -368,9 +408,9 @@ func (g *Game) PlayTrickFromLead(leadPlayer PlayerPosition) PlayerPosition {
 
 		// Pause so player can see each play (shorter for human since they chose)
 		if player.IsHuman {
-			g.ui.SleepForRedraw(500 * time.Millisecond)
+			g.ui.SleepForRedraw(250 * time.Millisecond)
 		} else {
-			g.ui.SleepForRedraw(1500 * time.Millisecond)
+			g.ui.SleepForRedraw(750 * time.Millisecond)
 		}
 
 		currentPlayer = currentPlayer.Next()
@@ -380,11 +420,11 @@ func (g *Game) PlayTrickFromLead(leadPlayer PlayerPosition) PlayerPosition {
 	g.TrickWinner = winner
 	g.TrickCount++
 
-	return winner
+	return winner, false
 }
 
 // humanPlayTUI handles human play via TUI
-func (g *Game) humanPlayTUI(player *Player, trick *Trick) []Card {
+func (g *Game) humanPlayTUI(player *Player, trick *Trick) ([]Card, bool) {
 	level := g.DealerLevel()
 	g.setPhase(baseui.PhasePlaying)
 
@@ -397,7 +437,10 @@ func (g *Game) humanPlayTUI(player *Player, trick *Trick) []Card {
 	}
 
 	for {
-		action := g.ui.WaitAction()
+		action, restarted := g.waitAction()
+		if restarted {
+			return nil, true
+		}
 		if action.Type == baseui.ActionPlay && len(action.CardIdx) > 0 {
 			var cards []Card
 			for _, idx := range action.CardIdx {
@@ -417,20 +460,22 @@ func (g *Game) humanPlayTUI(player *Player, trick *Trick) []Card {
 					cards = ResolveThrow(cards, otherHands, g.TrumpSuit, level)
 				}
 				g.clearSelection()
-				return cards
+				return cards, false
 			}
 			// Invalid play - show error and reset selection
 			g.clearSelection()
 			errMsg := g.explainInvalidPlay(cards, leadCards, player.Hand, otherHands, g.TrumpSuit, level)
 			g.showMessage(errMsg, []baseui.ButtonSpec{{ID: string(baseui.ActionConfirm), Label: "[Enter:确认]", Enabled: true}})
-			g.ui.WaitAction()
+			if _, restarted := g.waitAction(); restarted {
+				return nil, true
+			}
 			g.showMessage("", nil)
 		}
 	}
 }
 
 // PlayHand plays a complete hand (25 tricks)
-func (g *Game) PlayHand() {
+func (g *Game) PlayHand() bool {
 	g.TrickCount = 0
 	g.TeamScore = [2]int{0, 0}
 
@@ -438,7 +483,10 @@ func (g *Game) PlayHand() {
 
 	for g.TrickCount < 25 {
 		g.setPhase(baseui.PhasePlaying)
-		winner := g.PlayTrickFromLead(leadPlayer)
+		winner, restarted := g.PlayTrickFromLead(leadPlayer)
+		if restarted {
+			return true
+		}
 
 		points := g.CurrentTrick.Points()
 		winnerTeam := PlayerTeam(winner)
@@ -449,7 +497,7 @@ func (g *Game) PlayHand() {
 		g.uiTrickPoints = points
 		g.uiMessage = fmt.Sprintf("本轮 %s 赢得 %d 分", formatPosition(winner), points)
 		g.setPhase(baseui.PhaseWaitTrick)
-		g.ui.SleepForRedraw(3 * time.Second)
+		g.ui.SleepForRedraw(1500 * time.Millisecond)
 
 		// Clear trick display and continue
 		g.uiMessage = ""
@@ -458,7 +506,10 @@ func (g *Game) PlayHand() {
 	}
 
 	g.HandleBottomScore()
-	g.HandleUpgrade()
+	if g.HandleUpgrade() {
+		return true
+	}
+	return false
 }
 
 // HandleBottomScore handles the bottom card scoring
@@ -481,7 +532,7 @@ func (g *Game) HandleBottomScore() {
 }
 
 // HandleUpgrade determines the upgrade result
-func (g *Game) HandleUpgrade() {
+func (g *Game) HandleUpgrade() bool {
 	dealerTeam := g.DealerTeam()
 	opponentTeam := g.OpponentTeam()
 	opponentScore := g.TeamScore[opponentTeam]
@@ -549,7 +600,10 @@ func (g *Game) HandleUpgrade() {
 
 	g.setPhase(baseui.PhaseHandResult)
 	g.showMessage(msg, nil)
-	g.ui.WaitActionOrTimeout(5 * time.Second)
+	_, _, restarted := g.waitActionOrTimeout(5 * time.Second)
+	if restarted {
+		return true
+	}
 	g.showMessage("", nil)
 
 	g.Dealer = newDealer
@@ -559,36 +613,69 @@ func (g *Game) HandleUpgrade() {
 	if g.Phase != PhaseGameOver {
 		g.Phase = PhaseDealing
 	}
+	return false
 }
 
 // Run is the main game loop driven by the active UI
 func (g *Game) Run() {
+	for {
+		g.resetForNewMatch()
+		g.setPhase(baseui.PhaseWelcome)
+		g.showMessage("升级（拖拉机）纸牌游戏\n两副牌 · 从2开始打 · 4人对战",
+			[]baseui.ButtonSpec{{ID: string(baseui.ActionStart), Label: "[Enter:开始游戏]", Enabled: true}})
+		started := false
+		for {
+			action, restarted := g.waitAction()
+			if restarted {
+				break
+			}
+			if action.Type == baseui.ActionStart {
+				started = true
+				break
+			}
+		}
+		if !started {
+			continue
+		}
+		g.showMessage("", nil)
 
-	// Wait for start
-	g.setPhase(baseui.PhaseWelcome)
-	g.showMessage("升级（拖拉机）纸牌游戏\n两副牌 · 从2开始打 · 4人对战",
-		[]baseui.ButtonSpec{{ID: string(baseui.ActionStart), Label: "[Enter:开始游戏]", Enabled: true}})
-	g.ui.WaitAction()
-	g.showMessage("", nil)
+		g.Phase = PhaseDealing
+		restarted := false
+		for g.Phase != PhaseGameOver {
+			if g.DealAnimated() {
+				restarted = true
+				break
+			}
 
-	g.Phase = PhaseDealing
+			g.setPhase(baseui.PhaseBidding)
+			if g.RunBiddingPhase() {
+				restarted = true
+				break
+			}
 
-	for g.Phase != PhaseGameOver {
-		g.DealAnimated()
+			g.setPhase(baseui.PhaseDiscard)
+			if g.DiscardBottom() {
+				restarted = true
+				break
+			}
 
-		g.setPhase(baseui.PhaseBidding)
-		g.RunBiddingPhase()
+			if g.PlayHand() {
+				restarted = true
+				break
+			}
+		}
+		if restarted {
+			continue
+		}
 
-		g.setPhase(baseui.PhaseDiscard)
-		g.DiscardBottom()
-
-		g.PlayHand()
+		// Game over
+		g.setPhase(baseui.PhaseGameOver)
+		g.showMessage("游戏结束！\n感谢游玩！", []baseui.ButtonSpec{{ID: string(baseui.ActionConfirm), Label: "[Enter:退出]", Enabled: true}})
+		if _, restarted := g.waitAction(); restarted {
+			continue
+		}
+		return
 	}
-
-	// Game over
-	g.setPhase(baseui.PhaseGameOver)
-	g.showMessage("游戏结束！\n感谢游玩！", []baseui.ButtonSpec{{ID: string(baseui.ActionConfirm), Label: "[Enter:退出]", Enabled: true}})
-	g.ui.WaitAction()
 }
 
 func (g *Game) setPhase(phase baseui.UIPhase) {

@@ -366,9 +366,12 @@ func validateLeading(cards []Card, allHands [][]Card, trumpSuit Suit, level Rank
 		return true
 	}
 
-	// Multiple groups: 甩牌 - always valid as long as same suit and clean groups
-	// The actual throw resolution (only throw max cards, or play single smallest)
-	// is handled by ResolveThrow before the play is made
+	// Multiple groups: 甩牌 only when every component is currently最大的。
+	for _, g := range groups {
+		if !isMaxGroup(g, allHands, trumpSuit, level) {
+			return false
+		}
+	}
 	return true
 }
 
@@ -406,6 +409,20 @@ func validateFollowing(played []Card, lead []Card, hand []Card, trumpSuit Suit, 
 
 	leadGroups := AnalyzePlay(lead, trumpSuit, level)
 	playedGroups := AnalyzePlay(played, trumpSuit, level)
+
+	if len(leadGroups) == 1 && len(playedGroups) == 1 {
+		leadGroup := leadGroups[0]
+		playedGroup := playedGroups[0]
+		if leadGroup.IsSingle && playedGroup.IsSingle {
+			return true
+		}
+		if leadGroup.IsPair && playedGroup.IsPair {
+			return true
+		}
+		if leadGroup.IsTractor && playedGroup.IsTractor && len(leadGroup.Cards) == len(playedGroup.Cards) {
+			return true
+		}
+	}
 
 	// Count tractors and pairs in lead
 	leadTractorCount := 0

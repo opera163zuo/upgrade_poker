@@ -299,3 +299,19 @@ func TestThrowCards(t *testing.T) {
 		t.Error("Throw A+Q singles should be invalid when someone has K (> Q)")
 	}
 }
+
+func TestValidateFollowingPair(t *testing.T) {
+	level := Rank10
+	trumpSuit := SuitHeart
+	lead := []Card{{Suit: SuitSpade, Rank: RankQ, Copy: 0}, {Suit: SuitSpade, Rank: RankQ, Copy: 1}}
+	hand := []Card{
+		{Suit: SuitSpade, Rank: Rank7, Copy: 0},
+		{Suit: SuitSpade, Rank: Rank7, Copy: 1},
+		{Suit: SuitSpade, Rank: Rank9, Copy: 0},
+		{Suit: SuitClub, Rank: RankA, Copy: 0},
+	}
+	played := []Card{{Suit: SuitSpade, Rank: Rank7, Copy: 0}, {Suit: SuitSpade, Rank: Rank7, Copy: 1}}
+	if !ValidatePlay(played, lead, hand, nil, trumpSuit, level) {
+		t.Fatal("expected following pair to be a valid play")
+	}
+}

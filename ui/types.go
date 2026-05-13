@@ -19,6 +19,7 @@ type ActionType string
 
 const (
 	ActionStart      ActionType = "start"
+	ActionRestart    ActionType = "restart"
 	ActionPlay       ActionType = "play"
 	ActionCancel     ActionType = "cancel"
 	ActionBid        ActionType = "bid"
