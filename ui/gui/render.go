@@ -195,7 +195,7 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 	}
 	g.drawText(screen, pv.Name, 236, 350, color.White)
 	var slots []southSlot
-	slots = g.comboSouthSlots(pv.HandCards, selected, biddingRaise, view.TrumpSuit)
+	slots = g.southSlots(pv.HandCards, selected, biddingRaise, view.TrumpSuit)
 	g.drawSouthGroupBackdrops(screen, pv.HandCards, slots, view.TrumpSuit)
 	for _, slot := range slots {
 		c := pv.HandCards[slot.idx]
@@ -210,68 +210,75 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 	g.st.mu.Unlock()
 }
 
-func centeredSouthHandX(count int) int {
-	if count <= 0 {
-		return SouthHandX
-	}
-	width := CardW
-	if count > 1 {
-		width += (count - 1) * SouthHandGap
-	}
-	start := TableX + (TableW-width)/2
-	if start < SouthHandX {
-		return SouthHandX
-	}
-	return start
-}
-
-func (g *GUI) comboSouthSlots(cards []baseui.CardView, selected map[int]bool, biddingRaise map[int]bool, trumpSuit string) []southSlot {
+func (g *GUI) southSlots(cards []baseui.CardView, selected map[int]bool, biddingRaise map[int]bool, trumpSuit string) []southSlot {
 	order := g.suitRowOrder(cards, trumpSuit)
-	rowY := map[string]int{}
-	baseY := 308
-	for i, suit := range order {
-		rowY[suit] = baseY + i*18
-	}
-	rowCards := map[string][]int{}
+
+	// Group card indices by effective suit
+	suitIndices := map[string][]int{}
 	for idx, c := range cards {
-		key := c.EffectiveSuit
-		if key == "" {
-			key = c.Suit
-		}
-		rowCards[key] = append(rowCards[key], idx)
+		key := effectiveSuit(c)
+		suitIndices[key] = append(suitIndices[key], idx)
 	}
-	var slots []southSlot
+
+	// Build flat ordered indices: trump group first, then other suits
+	var ordered []int
 	for _, suit := range order {
-		indices := rowCards[suit]
-		if len(indices) == 0 {
-			continue
-		}
-		x := centeredSouthHandX(len(indices))
-		for pos, idx := range indices {
-			if pos > 0 {
-				prev := cards[indices[pos-1]]
-				curr := cards[idx]
-				gap := 18
-				if curr.IsTractor && prev.IsTractor && curr.EffectiveSuit == prev.EffectiveSuit {
-					gap = 12
-				} else if curr.EffectiveSuit != prev.EffectiveSuit {
-					gap = 30
-				}
-				x += gap
-			}
-			y := rowY[suit]
-			if selected[idx] || biddingRaise[idx] {
-				y -= 12
-			}
-			w := 18
-			if pos == len(indices)-1 {
-				w = CardW
-			}
-			slots = append(slots, southSlot{idx: idx, x: x, y: y, w: w, h: CardH})
-		}
+		ordered = append(ordered, suitIndices[suit]...)
 	}
+	if len(ordered) == 0 {
+		return nil
+	}
+
+	const withinSuitGap = 20
+	const betweenSuitGap = 30
+
+	// Calculate total width for centering the entire hand
+	totalWidth := CardW
+	for i := 1; i < len(ordered); i++ {
+		g := withinSuitGap
+		if effectiveSuit(cards[ordered[i-1]]) != effectiveSuit(cards[ordered[i]]) {
+			g = betweenSuitGap
+		}
+		totalWidth += g
+	}
+
+	startX := TableX + (TableW-totalWidth)/2
+	if startX < SouthHandX {
+		startX = SouthHandX
+	}
+
+	y := 308
+	var slots []southSlot
+
+	for pos, idx := range ordered {
+		var slotX int
+		if pos == 0 {
+			slotX = startX
+		} else {
+			g := withinSuitGap
+			if effectiveSuit(cards[ordered[pos-1]]) != effectiveSuit(cards[idx]) {
+				g = betweenSuitGap
+			}
+			slotX = slots[pos-1].x + g
+		}
+
+		slotY := y
+		if selected[idx] || biddingRaise[idx] {
+			slotY -= 12
+		}
+
+		slots = append(slots, southSlot{idx: idx, x: slotX, y: slotY, w: CardW, h: CardH})
+	}
+
 	sort.Slice(slots, func(i, j int) bool { return slots[i].idx < slots[j].idx })
 	return slots
+}
+
+func effectiveSuit(c baseui.CardView) string {
+	if c.EffectiveSuit != "" {
+		return c.EffectiveSuit
+	}
+	return c.Suit
 }
 
 func (g *GUI) suitRowOrder(cards []baseui.CardView, trumpSuit string) []string {
