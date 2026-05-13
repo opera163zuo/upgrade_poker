@@ -182,12 +182,9 @@ func (p *Player) DisplayHand(trumpSuit Suit, level Rank) string {
 		}
 	}
 
-	// Display non-trump suits
-	suitOrder := []Suit{SuitSpade, SuitHeart, SuitDiamond, SuitClub}
+	// Display non-trump suits in fixed order: 方块→梅花→红桃→黑桃
+	suitOrder := NonTrumpDisplayOrder(trumpSuit)
 	for _, suit := range suitOrder {
-		if suit == trumpSuit {
-			continue
-		}
 		if cards, ok := groups[suit]; ok && len(cards) > 0 {
 			result += fmt.Sprintf("  %s: ", suit.Symbol())
 			for _, c := range cards {

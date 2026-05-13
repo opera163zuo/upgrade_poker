@@ -291,12 +291,15 @@ func (g *GUI) suitRowOrder(cards []baseui.CardView, trumpSuit string) []string {
 		seen[s] = true
 		base = append(base, s)
 	}
-	push(trumpSuit)
-	for _, s := range []string{"黑桃", "红心", "方块", "梅花", "王"} {
+	// Non-trump suits in fixed order: 方块→梅花→红桃→黑桃
+	for _, s := range []string{"方块", "梅花", "红心", "黑桃"} {
 		if s != trumpSuit {
 			push(s)
 		}
 	}
+	// Trump suit goes last (rightmost)
+	push(trumpSuit)
+	// Any remaining suits not yet seen (e.g. 王 in no-trump mode)
 	for _, c := range cards {
 		key := c.EffectiveSuit
 		if key == "" {

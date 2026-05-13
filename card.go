@@ -171,7 +171,8 @@ func SortCards(cards []Card, trumpSuit Suit, level Rank) {
 
 // CompareForSort compares two cards for sorting purposes
 // Returns -1 if a < b, 0 if equal, 1 if a > b
-// Sort order: non-trump suits grouped together (♠♥♦♣), then trump suit/jokers.
+// Sort order: non-trump suits grouped in 方块→梅花→红桃→黑桃 order,
+// then trump suit/jokers last (rightmost).
 // Within each group, sorted by rank ascending so the biggest card appears on the right.
 func CompareForSort(a, b Card, trumpSuit Suit, level Rank) int {
 	aIsTrump := IsTrump(a, trumpSuit, level)
@@ -204,7 +205,10 @@ func CompareForSort(a, b Card, trumpSuit Suit, level Rank) int {
 		if b.Suit == trumpSuit {
 			return -1
 		}
-		if a.Suit < b.Suit {
+		// Use display suit order: Diamond→Club→Heart→Spade
+		aDisp := DisplaySuitOrder(a.Suit)
+		bDisp := DisplaySuitOrder(b.Suit)
+		if aDisp < bDisp {
 			return -1
 		}
 		return 1
@@ -219,6 +223,39 @@ func CompareForSort(a, b Card, trumpSuit Suit, level Rank) int {
 	}
 
 	return 0
+}
+
+// DisplaySuitOrder returns the display order index for a suit.
+// Display order (left to right): 方块→梅花→红桃→黑桃
+// The larger the index, the further right the suit appears.
+func DisplaySuitOrder(s Suit) int {
+	switch s {
+	case SuitDiamond:
+		return 0
+	case SuitClub:
+		return 1
+	case SuitHeart:
+		return 2
+	case SuitSpade:
+		return 3
+	case SuitJoker:
+		return 4
+	default:
+		return 4
+	}
+}
+
+// NonTrumpDisplayOrder returns the display order indices for non-trump suits
+// in the fixed order 方块→梅花→红桃→黑桃, excluding the trump suit.
+func NonTrumpDisplayOrder(trumpSuit Suit) []Suit {
+	order := []Suit{SuitDiamond, SuitClub, SuitHeart, SuitSpade}
+	result := make([]Suit, 0, 4)
+	for _, s := range order {
+		if s != trumpSuit {
+			result = append(result, s)
+		}
+	}
+	return result
 }
 
 // GroupBySuit groups cards by effective suit for display

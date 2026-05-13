@@ -369,3 +369,111 @@ func TestRunBiddingPhaseSetsDealerAndTrumpFromAIBid(t *testing.T) {
 		t.Fatalf("expected dealer west, got %v", g.Dealer)
 	}
 }
+
+func TestSortOrderTrumpLast(t *testing.T) {
+	// Test that trump cards are sorted to the right (last) in CompareForSort
+	// and non-trump suits follow 方块→梅花→红桃→黑桃 order
+
+	// Scenario: level 5, Spade is trump
+	level := Rank5
+	trumpSuit := SuitSpade
+
+	// Create a mixed hand
+	cards := []Card{
+		{Suit: SuitHeart, Rank: RankA},   // non-trump, should be middle
+		{Suit: SuitClub, Rank: RankK},    // non-trump, should be left of Heart
+		{Suit: SuitSpade, Rank: Rank7},   // trump suit, should be rightmost group
+		{Suit: SuitDiamond, Rank: RankQ}, // non-trump, should be leftmost group
+		{Suit: SuitJoker, Rank: RankBigJoker}, // trump, should be rightmost group
+		{Suit: SuitClub, Rank: Rank5},    // level card of non-trump suit, is trump
+	}
+
+	SortCards(cards, trumpSuit, level)
+
+	// Expected order by groups (left to right):
+	// 方块Q | 梅花K | 红心A | 黑桃7 + 梅花5(级牌) + 大王
+	// In each group: small to large
+
+	// Find the first trump card index
+	firstTrumpIdx := -1
+	for i, c := range cards {
+		if IsTrump(c, trumpSuit, level) {
+			firstTrumpIdx = i
+			break
+		}
+	}
+	if firstTrumpIdx < 0 {
+		t.Fatal("Expected at least one trump card in sorted order")
+	}
+
+	// All non-trump cards must come before first trump
+	for i := 0; i < firstTrumpIdx; i++ {
+		if IsTrump(cards[i], trumpSuit, level) {
+			t.Errorf("Non-trump section at index %d contains trump card %v", i, cards[i])
+		}
+	}
+
+	// All trump cards must be in the last segment
+	for i := firstTrumpIdx; i < len(cards); i++ {
+		if !IsTrump(cards[i], trumpSuit, level) {
+			t.Errorf("Trump section at index %d contains non-trump card %v", i, cards[i])
+		}
+	}
+
+	// Verify suit order among non-trump cards
+	nonTrumpSuits := make([]Suit, 0)
+	for i := 0; i < firstTrumpIdx; i++ {
+		nonTrumpSuits = append(nonTrumpSuits, cards[i].Suit)
+	}
+	// Should appear in order: Diamond → Club → Heart
+	expectedNonTrumpOrder := []Suit{SuitDiamond, SuitClub, SuitHeart}
+	if len(nonTrumpSuits) != len(expectedNonTrumpOrder) {
+		t.Errorf("Expected %d non-trump suits, got %d: %v", len(expectedNonTrumpOrder), len(nonTrumpSuits), nonTrumpSuits)
+	} else {
+		for i, s := range expectedNonTrumpOrder {
+			if nonTrumpSuits[i] != s {
+				t.Errorf("Non-trump suit at position %d = %d, expected %d", i, nonTrumpSuits[i], s)
+			}
+		}
+	}
+}
+
+func TestNonTrumpDisplayOrder(t *testing.T) {
+	// Test that NonTrumpDisplayOrder excludes the trump suit
+	// and keeps Diamond→Club→Heart→Spade relative order
+
+	order := NonTrumpDisplayOrder(SuitSpade)
+	expected := []Suit{SuitDiamond, SuitClub, SuitHeart}
+	if len(order) != len(expected) {
+		t.Errorf("Expected %d suits, got %d: %v", len(expected), len(order), order)
+	}
+	for i, s := range expected {
+		if order[i] != s {
+			t.Errorf("At index %d: expected %d, got %d", i, s, order[i])
+		}
+	}
+
+	// Test with heart as trump
+	order2 := NonTrumpDisplayOrder(SuitHeart)
+	expected2 := []Suit{SuitDiamond, SuitClub, SuitSpade}
+	if len(order2) != len(expected2) {
+		t.Errorf("Expected %d suits, got %d: %v", len(expected2), len(order2), order2)
+	}
+	for i, s := range expected2 {
+		if order2[i] != s {
+			t.Errorf("At index %d: expected %d, got %d", i, s, order2[i])
+		}
+	}
+
+	// Test with diamond as trump
+	order3 := NonTrumpDisplayOrder(SuitDiamond)
+	expected3 := []Suit{SuitClub, SuitHeart, SuitSpade}
+	if len(order3) != len(expected3) {
+		t.Errorf("Expected %d suits, got %d: %v", len(expected3), len(order3), order3)
+	}
+	for i, s := range expected3 {
+		if order3[i] != s {
+			t.Errorf("At index %d: expected %d, got %d", i, s, order3[i])
+		}
+	}
+}

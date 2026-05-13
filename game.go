@@ -156,11 +156,9 @@ func (g *Game) DealAnimated() bool {
 		g.Players[i].Hand = make([]Card, 0)
 	}
 	g.uiDealCounts = [4]int{}
-	g.render()
-	g.setPhase(baseui.PhaseDealing)
 	g.CurrentBid = nil
 	g.TrumpSuit = SuitJoker
-
+	g.setPhase(baseui.PhaseDealing)
 	level := g.DealerLevel()
 	humanAsked := false
 
@@ -615,8 +613,8 @@ func (g *Game) HandleUpgrade() bool {
 	if restarted {
 		return true
 	}
-	g.showMessage("", nil)
 
+	// Reset state for next round BEFORE rendering the empty message
 	g.Dealer = newDealer
 	g.CurrentBid = nil
 	g.CurrentTrick = nil
@@ -624,6 +622,7 @@ func (g *Game) HandleUpgrade() bool {
 	if g.Phase != PhaseGameOver {
 		g.Phase = PhaseDealing
 	}
+	g.showMessage("", nil)
 	return false
 }
 
@@ -923,7 +922,8 @@ func cardsToString(cards []Card) string {
 	}
 
 	result := ""
-	suitOrder := []Suit{SuitSpade, SuitHeart, SuitDiamond, SuitClub, SuitJoker}
+	suitOrder := NonTrumpDisplayOrder(SuitJoker)
+	suitOrder = append(suitOrder, SuitJoker)
 	for _, suit := range suitOrder {
 		if cards, ok := suitGroups[suit]; ok && len(cards) > 0 {
 			result += suit.Symbol() + ": "

@@ -850,20 +850,18 @@ func (t *TUI) drawSouthHand() {
 		t.drawString(t.width/2-runewidth.StringWidth(waitText)/2, handY-4, waitText, tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true))
 	}
 
-	// Build draw order: trump first, then other suits
+	// Build draw order: non-trump suits first in Diamond→Club→Heart→Spade order, then trump last
 	drawOrder := make([]Card, 0, len(player.Hand))
-	// Always put trump group first (works for both normal and no-trump)
-	if cards, ok := groups[g.TrumpSuit]; ok {
-		drawOrder = append(drawOrder, cards...)
-	}
-	suitOrder := []Suit{SuitSpade, SuitHeart, SuitDiamond, SuitClub}
+	// Non-trump suits in fixed order: 方块→梅花→红桃→黑桃
+	suitOrder := NonTrumpDisplayOrder(g.TrumpSuit)
 	for _, suit := range suitOrder {
-		if suit == g.TrumpSuit {
-			continue
-		}
 		if cards, ok := groups[suit]; ok {
 			drawOrder = append(drawOrder, cards...)
 		}
+	}
+	// Trump suit + jokers go last (rightmost)
+	if cards, ok := groups[g.TrumpSuit]; ok {
+		drawOrder = append(drawOrder, cards...)
 	}
 	// For non-no-trump, pick up any cards grouped under SuitJoker
 	if g.TrumpSuit != SuitJoker {
