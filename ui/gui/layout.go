@@ -36,9 +36,9 @@ const (
 	ActionBtnY = 438
 
 	BidPanelX      = 396
-	BidPanelY      = 286
+	BidPanelY      = 170
 	BidPanelW      = 194
-	BidPanelH      = 118
+	BidPanelH      = 120
 	BidSymbolSize  = 30
 	BidSymbolGap   = 8
 	BidPrimaryBtnW = 76

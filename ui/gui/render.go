@@ -110,14 +110,14 @@ func (g *GUI) statusLine(view baseui.TableView, selected map[int]bool) string {
 	case baseui.PhaseBidding:
 		return "请选择亮主花色，然后点击“继续”确认 / P 不亮"
 	case baseui.PhaseDiscard:
-		return fmt.Sprintf("请垫底牌（已选 %d/8） / Enter 扣底 / Tab 切视图", len(selected))
+		return fmt.Sprintf("请垫底牌（已选 %d/8） / Enter 扣底", len(selected))
 	case baseui.PhasePlaying:
 		if view.WaitingForHuman {
 			hint := ""
 			if view.CanHint {
 				hint = " / H 提示"
 			}
-			return fmt.Sprintf("请你出牌（已选 %d 张）/ 双击或 Enter 出牌%s / Tab 切视图", len(selected), hint)
+			return fmt.Sprintf("请你出牌（已选 %d 张）/ 双击或 Enter 出牌%s", len(selected), hint)
 		}
 		return "等待其他玩家出牌..."
 	case baseui.PhaseWaitTrick:
@@ -179,7 +179,7 @@ func (g *GUI) drawCenter(screen *ebiten.Image, view baseui.TableView) {
 			g.drawCardWithAlpha(screen, p.x+i*22, p.y, c, false, 1)
 		}
 	}
-	showBottom := len(view.BottomCards) > 0 && (view.Phase == baseui.PhaseDealing || view.Phase == baseui.PhaseDiscard || view.Phase == baseui.PhaseWaitTrick || view.Phase == baseui.PhaseHandResult)
+	showBottom := len(view.BottomCards) > 0 && (view.Phase == baseui.PhaseDiscard || view.Phase == baseui.PhaseHandResult)
 	if showBottom {
 		for i, c := range view.BottomCards {
 			g.drawCardWithAlpha(screen, BottomX+i*BottomGap, BottomY, c, false, 1)
@@ -189,23 +189,14 @@ func (g *GUI) drawCenter(screen *ebiten.Image, view baseui.TableView) {
 
 func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected map[int]bool) {
 	pv := view.Players[0]
-	mode := view.HandViewMode
-	if mode == "" {
-		mode = "combo"
-	}
 	biddingRaise := map[int]bool{}
 	if view.Phase == baseui.PhaseBidding {
 		biddingRaise = g.biddingRaisedCards(view)
 	}
-	label := fmt.Sprintf("%s · %s", pv.Name, map[string]string{"combo": "牌型视图", "flat": "普通排序"}[mode])
-	g.drawText(screen, label, 236, 350, color.White)
+	g.drawText(screen, pv.Name, 236, 350, color.White)
 	var slots []southSlot
-	if mode == "combo" {
-		slots = g.comboSouthSlots(pv.HandCards, selected, biddingRaise, view.TrumpSuit)
-		g.drawSouthGroupBackdrops(screen, pv.HandCards, slots, view.TrumpSuit)
-	} else {
-		slots = g.flatSouthSlots(pv.HandCards, selected, biddingRaise)
-	}
+	slots = g.comboSouthSlots(pv.HandCards, selected, biddingRaise, view.TrumpSuit)
+	g.drawSouthGroupBackdrops(screen, pv.HandCards, slots, view.TrumpSuit)
 	for _, slot := range slots {
 		c := pv.HandCards[slot.idx]
 		g.drawCardWithAlpha(screen, slot.x, slot.y, c, selected[slot.idx] || biddingRaise[slot.idx], 1)
@@ -217,24 +208,6 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 	g.st.mu.Lock()
 	g.st.cardRects = rects
 	g.st.mu.Unlock()
-}
-
-func (g *GUI) flatSouthSlots(cards []baseui.CardView, selected map[int]bool, biddingRaise map[int]bool) []southSlot {
-	slots := make([]southSlot, 0, len(cards))
-	startX := centeredSouthHandX(len(cards))
-	for i := range cards {
-		x := startX + i*SouthHandGap
-		y := SouthHandY
-		if selected[i] || biddingRaise[i] {
-			y -= 14
-		}
-		w := SouthHandGap
-		if i == len(cards)-1 {
-			w = CardW
-		}
-		slots = append(slots, southSlot{idx: i, x: x, y: y, w: w, h: CardH})
-	}
-	return slots
 }
 
 func centeredSouthHandX(count int) int {
@@ -427,11 +400,11 @@ func (g *GUI) drawButtons(screen *ebiten.Image, view baseui.TableView, selected 
 		g.drawActionButton(screen, 120, ActionBtnY, ActionBtnW, ActionBtnH, "提示", baseui.UIAction{Type: baseui.ActionHint}, view.CanHint, true)
 		g.drawActionButton(screen, 226, ActionBtnY, ActionBtnW, ActionBtnH, "出牌", baseui.UIAction{Type: baseui.ActionPlay}, len(selected) > 0, false)
 		g.drawActionButton(screen, 332, ActionBtnY, ActionBtnW, ActionBtnH, "取消", baseui.UIAction{Type: baseui.ActionCancel}, len(selected) > 0, true)
-		g.drawActionButton(screen, 438, ActionBtnY, 124, ActionBtnH, toggleLabel(view.HandViewMode), baseui.UIAction{Type: baseui.ActionToggleView}, true, true)
+
 	}
 
 	if view.Phase == baseui.PhaseDiscard {
-		g.drawActionButton(screen, 120, ActionBtnY, 124, ActionBtnH, toggleLabel(view.HandViewMode), baseui.UIAction{Type: baseui.ActionToggleView}, true, true)
+
 		g.drawActionButton(screen, 254, ActionBtnY, ActionBtnW, ActionBtnH, "扣底", baseui.UIAction{Type: baseui.ActionPlay}, len(selected) == view.DiscardCount, false)
 		g.drawActionButton(screen, 360, ActionBtnY, ActionBtnW, ActionBtnH, "取消", baseui.UIAction{Type: baseui.ActionCancel}, len(selected) > 0, true)
 	}
@@ -445,12 +418,7 @@ func (g *GUI) drawButtons(screen *ebiten.Image, view baseui.TableView, selected 
 	}
 }
 
-func toggleLabel(mode string) string {
-	if mode == "combo" {
-		return "切到普通排序"
-	}
-	return "切到牌型视图"
-}
+
 
 func sanitizeButtonLabel(label string) string {
 	label = strings.TrimSpace(label)

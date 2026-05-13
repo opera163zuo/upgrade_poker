@@ -45,9 +45,7 @@ func (g *GUI) updateInput() {
 		case baseui.ActionHint:
 			g.applyHintSelection(hintIdx)
 			return
-		case baseui.ActionToggleView:
-			g.toggleHandViewMode()
-			return
+
 		case baseui.ActionConfirm:
 			g.submitSelectionOrConfirm()
 			return
@@ -96,9 +94,7 @@ func (g *GUI) handleKeyboard() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
 		g.submitFixedAction(baseui.ActionPass)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
-		g.toggleHandViewMode()
-	}
+
 	if inpututil.IsKeyJustPressed(ebiten.KeyH) {
 		g.applyCurrentHint()
 	}
@@ -238,16 +234,6 @@ func (g *GUI) applyHintSelection(indices []int) {
 	g.st.mu.Unlock()
 }
 
-func (g *GUI) toggleHandViewMode() {
-	g.st.mu.Lock()
-	if g.st.handViewMode == "combo" {
-		g.st.handViewMode = "flat"
-	} else {
-		g.st.handViewMode = "combo"
-	}
-	g.st.view.HandViewMode = g.st.handViewMode
-	g.st.mu.Unlock()
-}
 
 func (g *GUI) chooseBid(action baseui.UIAction) {
 	g.st.mu.Lock()

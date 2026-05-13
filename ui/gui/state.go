@@ -16,7 +16,6 @@ type state struct {
 	buttonRects       []buttonRect
 	lastClick         time.Time
 	lastCardIdx       int
-	handViewMode      string
 	selectedBidType   string
 	selectedBidSuit   string
 	selectedBidChoice string

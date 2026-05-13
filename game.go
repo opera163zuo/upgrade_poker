@@ -334,21 +334,16 @@ func (g *Game) DiscardBottom() bool {
 	dealer := g.Players[g.Dealer]
 
 	if dealer.IsHuman {
-		// Show bottom cards
-		g.showMessage(fmt.Sprintf("底牌：\n%s", cardsToString(g.BottomCards)),
-			[]baseui.ButtonSpec{{ID: string(baseui.ActionConfirm), Label: "[Enter:确认]", Enabled: true}})
-		if _, restarted := g.waitAction(); restarted {
-			return true
-		}
-		g.showMessage("", nil)
-
+		// Step 1: Dealer takes bottom cards into hand
 		dealer.Hand = append(dealer.Hand, g.BottomCards...)
 		dealer.SortHand(g.TrumpSuit, g.DealerLevel())
 
-		// Let human choose 8 cards to discard via UI
+		// Step 2: Set phase to Discard — GUI shows bottom cards in center
+		// and displays dealer's full hand (including the former bottom cards)
 		g.uiDiscardCount = 8
 		g.setPhase(baseui.PhaseDiscard)
 
+		// Step 3: Let human select 8 cards to discard from the complete hand
 		for {
 			action, restarted := g.waitAction()
 			if restarted {
@@ -851,7 +846,6 @@ func (g *Game) UISnapshot() baseui.TableView {
 		TrickPoints:       g.uiTrickPoints,
 		DealCounts:        g.uiDealCounts,
 		CurrentTrick:      map[string][]baseui.CardView{},
-		CanToggleHandView: true,
 	}
 	for k, v := range g.uiSelectedIdx {
 		view.SelectedIdx[k] = v

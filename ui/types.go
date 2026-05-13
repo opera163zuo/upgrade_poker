@@ -28,7 +28,6 @@ const (
 	ActionQuit       ActionType = "quit"
 	ActionTimeout    ActionType = "timeout"
 	ActionHint       ActionType = "hint"
-	ActionToggleView ActionType = "toggle_view"
 	ActionSelectBid  ActionType = "select_bid"
 )
 
@@ -97,7 +96,5 @@ type TableView struct {
 	DealCounts        [4]int
 	HintCardIdx       []int
 	CanHint           bool
-	HandViewMode      string
-	CanToggleHandView bool
 	UpdatedAt         time.Time
 }

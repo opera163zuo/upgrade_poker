@@ -13,7 +13,7 @@ type GUI struct {
 }
 
 func New() *GUI {
-	return &GUI{st: &state{actionCh: make(chan baseui.UIAction, 16), selected: map[int]bool{}, handViewMode: "combo"}}
+	return &GUI{st: &state{actionCh: make(chan baseui.UIAction, 16), selected: map[int]bool{}}}
 }
 
 func (g *GUI) Init() error {
@@ -34,10 +34,6 @@ func (g *GUI) Close() error { return nil }
 func (g *GUI) Render(view baseui.TableView) {
 	g.st.mu.Lock()
 	view.UpdatedAt = time.Now()
-	if g.st.handViewMode == "" {
-		g.st.handViewMode = "combo"
-	}
-	view.HandViewMode = g.st.handViewMode
 	g.st.view = view
 	if view.SelectedIdx != nil {
 		g.st.selected = map[int]bool{}
