@@ -13,7 +13,7 @@ var Version = "dev"
 
 func main() {
 	showVersion := flag.Bool("version", false, "show version")
-	uiMode := flag.String("ui", "tui", "ui mode: tui or gui")
+	uiMode := flag.String("ui", "gui", "ui mode: tui or gui")
 	flag.Parse()
 
 	if *showVersion {
