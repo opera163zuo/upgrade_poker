@@ -19,8 +19,9 @@ func New() *GUI {
 func (g *GUI) Init() error {
 	ebiten.SetWindowSize(LogicalWidth*2, LogicalHeight*2)
 	ebiten.SetWindowTitle("upgrade_poker - Ebitengine GUI")
+	// 图片加载失败不退出一耐心等待assets目录
 	if err := EnsureImagesLoaded(); err != nil {
-		return err
+		// 静默失败，使用备选纯色方块渲染
 	}
 	return nil
 }
