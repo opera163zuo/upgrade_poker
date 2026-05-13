@@ -3,7 +3,7 @@ package main
 // Game rules: trump determination, card comparison, tractor detection, play validation
 
 // IsTrump checks if a card is a trump card
-// Trump cards: Jokers, level-rank cards of any suit, all 2s (常主), cards of trump suit
+// Trump cards: Jokers, level-rank cards of any suit, cards of trump suit
 func IsTrump(card Card, trumpSuit Suit, level Rank) bool {
 	// Jokers are always trump
 	if card.IsJoker() {
@@ -11,10 +11,6 @@ func IsTrump(card Card, trumpSuit Suit, level Rank) bool {
 	}
 	// Level rank cards are always trump (e.g., all 10s when playing level 10)
 	if card.Rank == level {
-		return true
-	}
-	// 2 is 常主, always trump
-	if card.Rank == Rank2 {
 		return true
 	}
 	// Cards of the trump suit are trump
@@ -25,7 +21,7 @@ func IsTrump(card Card, trumpSuit Suit, level Rank) bool {
 }
 
 // TrumpOrder returns the sort order of a trump card (higher = stronger)
-// Order: BigJoker(100) > SmallJoker(90) > MainLevel(80) > OffLevel(70+) > Main2(60) > Off2(50+) > TrumpA(40) > ... > Trump3(1)
+// Order: BigJoker(100) > SmallJoker(90) > MainLevel(80) > OffLevel(70+) > TrumpA(14) > ... > Trump2(2)
 func TrumpOrder(card Card, trumpSuit Suit, level Rank) int {
 	if !IsTrump(card, trumpSuit, level) {
 		return 0
@@ -48,16 +44,7 @@ func TrumpOrder(card Card, trumpSuit Suit, level Rank) int {
 		return 70 + int(card.Suit)
 	}
 
-	// 2s (常主)
-	if card.Rank == Rank2 {
-		if card.Suit == trumpSuit {
-			return 60 // Main 2
-		}
-		// Off-suit 2s
-		return 50 + int(card.Suit)
-	}
-
-	// Trump suit cards (not level rank, not 2)
+	// Trump suit cards (not level rank)
 	if card.Suit == trumpSuit {
 		return int(card.Rank) // 3=3, 4=4, ..., A=14
 	}
@@ -132,11 +119,11 @@ func EffectiveSuit(card Card, trumpSuit Suit, level Rank) Suit {
 
 // CardGroup represents a group of cards (single, pair, or tractor)
 type CardGroup struct {
-	Cards    []Card
+	Cards     []Card
 	IsTractor bool
 	IsPair    bool
 	IsSingle  bool
-	Suit     Suit // effective suit
+	Suit      Suit // effective suit
 }
 
 // AnalyzePlay breaks down a player's played cards into groups
@@ -238,7 +225,7 @@ func analyzeSameSuit(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 	for _, c := range cards {
 		if !usedCards[c] {
 			result = append(result, CardGroup{
-				Cards:   []Card{c},
+				Cards:    []Card{c},
 				IsSingle: true,
 			})
 		}
@@ -301,10 +288,6 @@ func trumpRankOrder(r Rank, trumpSuit Suit, level Rank) int {
 	if r == level {
 		return 20 // Level rank (highest in trump after jokers)
 	}
-	if r == Rank2 {
-		return 10 // 2 is 常主, after level rank
-	}
-	// Normal rank order
 	return int(r)
 }
 
@@ -593,9 +576,9 @@ func DetermineTrickWinner(plays [][]Card, trumpSuit Suit, level Rank) int {
 // comparePlays compares two plays to determine which is stronger
 // Returns: 1 if a > b, -1 if a < b, 0 if equal
 // Rules:
-//   1. Trump beats non-trump (毙牌)
-//   2. Among same trump/non-trump: higher play type wins (tractor > pair > singles)
-//   3. Same type: compare best card
+//  1. Trump beats non-trump (毙牌)
+//  2. Among same trump/non-trump: higher play type wins (tractor > pair > singles)
+//  3. Same type: compare best card
 func comparePlays(a, b []Card, trumpSuit Suit, level Rank, leadSuit Suit) int {
 	// If either is empty, the non-empty one wins
 	if len(a) == 0 && len(b) == 0 {

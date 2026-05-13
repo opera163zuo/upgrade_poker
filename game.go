@@ -62,7 +62,7 @@ func NewGame(gameUI baseui.GameUI) *Game {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	g := &Game{
-		Level:         [2]Rank{Rank3, Rank3},
+		Level:         [2]Rank{Rank2, Rank2},
 		rng:           rng,
 		ui:            gameUI,
 		uiPhase:       baseui.PhaseWelcome,
@@ -553,6 +553,12 @@ func (g *Game) HandleUpgrade() {
 	g.showMessage("", nil)
 
 	g.Dealer = newDealer
+	g.CurrentBid = nil
+	g.CurrentTrick = nil
+	g.TrumpSuit = SuitJoker
+	if g.Phase != PhaseGameOver {
+		g.Phase = PhaseDealing
+	}
 }
 
 // Run is the main game loop driven by the active UI
@@ -560,7 +566,7 @@ func (g *Game) Run() {
 
 	// Wait for start
 	g.setPhase(baseui.PhaseWelcome)
-	g.showMessage("升级（拖拉机）纸牌游戏\n两副牌 · 2为常主 · 4人对战",
+	g.showMessage("升级（拖拉机）纸牌游戏\n两副牌 · 从2开始打 · 4人对战",
 		[]baseui.ButtonSpec{{ID: string(baseui.ActionStart), Label: "[Enter:开始游戏]", Enabled: true}})
 	g.ui.WaitAction()
 	g.showMessage("", nil)
@@ -651,25 +657,8 @@ func (g *Game) BuildDrawOrder(pos PlayerPosition) []Card {
 	}
 	level := g.DealerLevel()
 	player.SortHand(g.TrumpSuit, level)
-	groups := GroupBySuit(player.Hand, g.TrumpSuit, level)
-
-	drawOrder := make([]Card, 0, len(player.Hand))
-	if cards, ok := groups[g.TrumpSuit]; ok {
-		drawOrder = append(drawOrder, cards...)
-	}
-	for _, suit := range []Suit{SuitSpade, SuitHeart, SuitDiamond, SuitClub} {
-		if suit == g.TrumpSuit {
-			continue
-		}
-		if cards, ok := groups[suit]; ok {
-			drawOrder = append(drawOrder, cards...)
-		}
-	}
-	if g.TrumpSuit != SuitJoker {
-		if cards, ok := groups[SuitJoker]; ok {
-			drawOrder = append(drawOrder, cards...)
-		}
-	}
+	drawOrder := make([]Card, len(player.Hand))
+	copy(drawOrder, player.Hand)
 	return drawOrder
 }
 

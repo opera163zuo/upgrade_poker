@@ -11,10 +11,10 @@ type Suit int
 
 const (
 	SuitSpade   Suit = iota // 黑桃
-	SuitHeart                // 红心
-	SuitDiamond              // 方块
-	SuitClub                 // 梅花
-	SuitJoker                // 王
+	SuitHeart               // 红心
+	SuitDiamond             // 方块
+	SuitClub                // 梅花
+	SuitJoker               // 王
 )
 
 var suitSymbols = map[Suit]string{
@@ -72,19 +72,19 @@ const (
 )
 
 var rankSymbols = map[Rank]string{
-	Rank2:  "2",
-	Rank3:  "3",
-	Rank4:  "4",
-	Rank5:  "5",
-	Rank6:  "6",
-	Rank7:  "7",
-	Rank8:  "8",
-	Rank9:  "9",
-	Rank10: "10",
-	RankJ:  "J",
-	RankQ:  "Q",
-	RankK:  "K",
-	RankA:  "A",
+	Rank2:          "2",
+	Rank3:          "3",
+	Rank4:          "4",
+	Rank5:          "5",
+	Rank6:          "6",
+	Rank7:          "7",
+	Rank8:          "8",
+	Rank9:          "9",
+	Rank10:         "10",
+	RankJ:          "J",
+	RankQ:          "Q",
+	RankK:          "K",
+	RankA:          "A",
 	RankSmallJoker: "小王",
 	RankBigJoker:   "大王",
 }
@@ -98,9 +98,9 @@ func (r Rank) String() string {
 
 // Card represents a single card
 type Card struct {
-	Suit  Suit
-	Rank  Rank
-	Copy  int // 0 or 1 for two-deck distinction
+	Suit Suit
+	Rank Rank
+	Copy int // 0 or 1 for two-deck distinction
 }
 
 func (c Card) String() string {
@@ -171,8 +171,8 @@ func SortCards(cards []Card, trumpSuit Suit, level Rank) {
 
 // CompareForSort compares two cards for sorting purposes
 // Returns -1 if a < b, 0 if equal, 1 if a > b
-// Sort order: non-trump suits grouped together (♠♥♦♣), then trump suit, then jokers
-// Within each group, sorted by rank descending
+// Sort order: non-trump suits grouped together (♠♥♦♣), then trump suit/jokers.
+// Within each group, sorted by rank ascending so the biggest card appears on the right.
 func CompareForSort(a, b Card, trumpSuit Suit, level Rank) int {
 	aIsTrump := IsTrump(a, trumpSuit, level)
 	bIsTrump := IsTrump(b, trumpSuit, level)
@@ -185,12 +185,12 @@ func CompareForSort(a, b Card, trumpSuit Suit, level Rank) int {
 		return 1
 	}
 
-	// Both trump: compare by trump order (higher order = displayed last)
+	// Both trump: compare by trump order (lower order shown first, higher order shown later)
 	aOrder := TrumpOrder(a, trumpSuit, level)
 	bOrder := TrumpOrder(b, trumpSuit, level)
 	if aOrder != bOrder {
-		if aOrder > bOrder {
-			return -1 // higher order = smaller display position
+		if aOrder < bOrder {
+			return -1
 		}
 		return 1
 	}
@@ -210,9 +210,9 @@ func CompareForSort(a, b Card, trumpSuit Suit, level Rank) int {
 		return 1
 	}
 
-	// Same suit and order, compare by rank descending
+	// Same suit and order, compare by rank ascending
 	if a.Rank != b.Rank {
-		if a.Rank > b.Rank {
+		if a.Rank < b.Rank {
 			return -1
 		}
 		return 1
@@ -222,7 +222,7 @@ func CompareForSort(a, b Card, trumpSuit Suit, level Rank) int {
 }
 
 // GroupBySuit groups cards by effective suit for display
-// Trump cards (level rank, 2s, trump suit cards, jokers) are grouped under trumpSuit
+// Trump cards (level rank, trump suit cards, jokers) are grouped under trumpSuit
 func GroupBySuit(cards []Card, trumpSuit Suit, level Rank) map[Suit][]Card {
 	groups := make(map[Suit][]Card)
 	for _, c := range cards {
@@ -282,16 +282,12 @@ func LevelFromRank(r Rank) int {
 }
 
 // NextLevel returns the next level rank after the given one
-// Level progression: 3,4,5,6,7,8,9,10,J,Q,K,A,2 (then game won)
+// Level progression: 2,3,4,5,6,7,8,9,10,J,Q,K,A (then game won)
 func NextLevel(current Rank) Rank {
-	switch current {
-	case RankA:
-		return Rank2
-	case Rank2:
+	if current >= RankA {
 		return RankGameWon
-	default:
-		return current + 1
 	}
+	return current + 1
 }
 
 // LevelDisplayName returns the display name for a level

@@ -50,17 +50,17 @@ func TestTrumpDetection(t *testing.T) {
 	if !IsTrump(Card{Suit: SuitSpade, Rank: Rank10}, trumpSuit, level) {
 		t.Error("Level rank of any suit should be trump")
 	}
-	// 2 is 常主, always trump
-	if !IsTrump(Card{Suit: SuitClub, Rank: Rank2}, trumpSuit, level) {
-		t.Error("2 should be trump (常主)")
+	// 2 is no longer a permanent trump unless it is the current level or trump suit
+	if IsTrump(Card{Suit: SuitClub, Rank: Rank2}, trumpSuit, level) {
+		t.Error("2 should not be a permanent trump")
 	}
 	// Trump suit cards are trump
 	if !IsTrump(Card{Suit: SuitHeart, Rank: Rank7}, trumpSuit, level) {
 		t.Error("Trump suit cards should be trump")
 	}
-	// Non-trump suit non-level non-2 card is not trump
+	// Non-trump suit non-level card is not trump
 	if IsTrump(Card{Suit: SuitSpade, Rank: Rank7}, trumpSuit, level) {
-		t.Error("Non-trump suit non-level non-2 card should not be trump")
+		t.Error("Non-trump suit non-level card should not be trump")
 	}
 }
 
@@ -72,8 +72,7 @@ func TestTrumpOrder(t *testing.T) {
 	smallJoker := Card{Suit: SuitJoker, Rank: RankSmallJoker}
 	mainLevel := Card{Suit: SuitHeart, Rank: Rank10}
 	offLevel := Card{Suit: SuitSpade, Rank: Rank10}
-	main2 := Card{Suit: SuitHeart, Rank: Rank2}
-	off2 := Card{Suit: SuitSpade, Rank: Rank2}
+	trump2 := Card{Suit: SuitHeart, Rank: Rank2}
 	trumpA := Card{Suit: SuitHeart, Rank: RankA}
 
 	cases := []struct {
@@ -83,9 +82,8 @@ func TestTrumpOrder(t *testing.T) {
 		{bigJoker, smallJoker, 1},
 		{smallJoker, mainLevel, 1},
 		{mainLevel, offLevel, 1},
-		{offLevel, main2, 1},
-		{main2, off2, 1},
-		{off2, trumpA, 1},
+		{offLevel, trumpA, 1},
+		{trumpA, trump2, 1},
 	}
 
 	for _, c := range cases {

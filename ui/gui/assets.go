@@ -32,7 +32,7 @@ func loadFont(path string) font.Face {
 	tt, err := opentype.Parse(data)
 	if err == nil {
 		f, _ := opentype.NewFace(tt, &opentype.FaceOptions{
-			Size: 14, DPI: 72, Hinting: font.HintingFull,
+			Size: 12, DPI: 72, Hinting: font.HintingFull,
 		})
 		if f != nil {
 			return f
@@ -45,7 +45,7 @@ func loadFont(path string) font.Face {
 			tt, err := col.Font(i)
 			if err == nil {
 				f, _ := opentype.NewFace(tt, &opentype.FaceOptions{
-					Size: 14, DPI: 72, Hinting: font.HintingFull,
+					Size: 12, DPI: 72, Hinting: font.HintingFull,
 				})
 				if f != nil {
 					return f
@@ -161,8 +161,12 @@ func EnsureImagesLoaded() error {
 // 0-12=♥, 13-25=♠, 26-38=♦, 39-51=♣, 52=小王, 53=大王
 func cardNumberToHiresName(n int) string {
 	if n >= 52 {
-		if n == 52 { return "BJ.png" } // black joker
-		if n == 53 { return "RJ.png" } // red joker
+		if n == 52 {
+			return "BJ.png"
+		} // black joker
+		if n == 53 {
+			return "RJ.png"
+		} // red joker
 	}
 	suitIdx := n / 13
 	rankIdx := n % 13

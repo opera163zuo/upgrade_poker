@@ -28,7 +28,7 @@ func (p PlayerPosition) Partner() PlayerPosition {
 }
 
 func (p PlayerPosition) Next() PlayerPosition {
-	return (p + 1) % 4
+	return (p + 3) % 4
 }
 
 // Team represents a team (0 or 1)

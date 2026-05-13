@@ -52,7 +52,7 @@ func DisplayWelcome() {
 	fmt.Println("  ║                                      ║")
 	fmt.Println("  ║      升 级 （拖 拉 机）纸 牌 游 戏    ║")
 	fmt.Println("  ║                                      ║")
-	fmt.Println("  ║      两副牌  ·  2为常主  ·  4人对战   ║")
+	fmt.Println("  ║     两副牌  ·  从2开始打  ·  4人对战   ║")
 	fmt.Println("  ║                                      ║")
 	fmt.Println("  ║  规则简述：                           ║")
 	fmt.Println("  ║  - 你坐南方，与北方AI搭档             ║")

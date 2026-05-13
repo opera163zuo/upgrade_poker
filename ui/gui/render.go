@@ -40,6 +40,15 @@ func (g *GUI) drawText(dst *ebiten.Image, s string, x, y int, clr color.Color) {
 	text.Draw(dst, s, uiFontFace(), x, y, clr)
 }
 
+func (g *GUI) drawTextBadge(dst *ebiten.Image, s string, x, y, padX, padY int, fill color.Color, border color.Color, textColor color.Color) {
+	width := len([]rune(s))*12 + padX*2
+	height := 18 + padY*2
+	top := y - 14 - padY
+	vector.DrawFilledRect(dst, float32(x-padX), float32(top), float32(width), float32(height), fill, false)
+	vector.StrokeRect(dst, float32(x-padX), float32(top), float32(width), float32(height), 1, border, false)
+	g.drawText(dst, s, x, y, textColor)
+}
+
 func (g *GUI) Draw(screen *ebiten.Image) {
 	screen.Fill(bgColor)
 	g.st.mu.Lock()
@@ -79,7 +88,7 @@ func (g *GUI) drawInfoBar(screen *ebiten.Image, view baseui.TableView, selected 
 	g.drawLevelPair(screen, InfoBarX+16+leftW, InfoBarY+6, midW, 30, view.DealerLevel, view.OpponentLevel)
 	g.drawStatusBox(screen, InfoBarX+26+leftW+midW, InfoBarY+6, rightW, 30, color.RGBA{0x18, 0x24, 0x34, 0xff}, fmt.Sprintf("得分 %d : %d", view.TeamScore[0], view.TeamScore[1]), hiliteColor)
 	line2 := fmt.Sprintf("第 %d / 25 轮 · 手牌 南%d 西%d 北%d 东%d · %s", view.TrickCount+1, view.Players[0].HandCount, view.Players[1].HandCount, view.Players[2].HandCount, view.Players[3].HandCount, g.statusLine(view, selected))
-	g.drawText(screen, line2, InfoBarX+8, InfoBarY+39, color.RGBA{0xd5, 0xe5, 0xd5, 0xff})
+	g.drawTextBadge(screen, line2, InfoBarX+12, InfoBarY+41, 8, 4, color.RGBA{0x0e, 0x1a, 0x12, 0xcc}, color.RGBA{0x6b, 0x88, 0x73, 0xff}, color.RGBA{0xd5, 0xe5, 0xd5, 0xff})
 }
 
 func (g *GUI) drawStatusBox(screen *ebiten.Image, x, y, w, h int, fill color.Color, label string, textColor color.Color) {
@@ -155,7 +164,7 @@ func (g *GUI) drawSeatLabel(screen *ebiten.Image, pv baseui.PlayerView, x, y int
 		dots := strings.Repeat(".", int(time.Now().UnixMilli()/350)%3+1)
 		label += " 思考中" + dots
 	}
-	g.drawText(screen, label, x, y, color.White)
+	g.drawTextBadge(screen, label, x+8, y, 8, 3, color.RGBA{0x0d, 0x17, 0x22, 0xc8}, color.RGBA{0x9f, 0xb8, 0xc4, 0xff}, color.White)
 }
 
 func (g *GUI) drawCenter(screen *ebiten.Image, view baseui.TableView) {
@@ -212,8 +221,9 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 
 func (g *GUI) flatSouthSlots(cards []baseui.CardView, selected map[int]bool, biddingRaise map[int]bool) []southSlot {
 	slots := make([]southSlot, 0, len(cards))
+	startX := centeredSouthHandX(len(cards))
 	for i := range cards {
-		x := SouthHandX + i*SouthHandGap
+		x := startX + i*SouthHandGap
 		y := SouthHandY
 		if selected[i] || biddingRaise[i] {
 			y -= 14
@@ -225,6 +235,21 @@ func (g *GUI) flatSouthSlots(cards []baseui.CardView, selected map[int]bool, bid
 		slots = append(slots, southSlot{idx: i, x: x, y: y, w: w, h: CardH})
 	}
 	return slots
+}
+
+func centeredSouthHandX(count int) int {
+	if count <= 0 {
+		return SouthHandX
+	}
+	width := CardW
+	if count > 1 {
+		width += (count - 1) * SouthHandGap
+	}
+	start := TableX + (TableW-width)/2
+	if start < SouthHandX {
+		return SouthHandX
+	}
+	return start
 }
 
 func (g *GUI) comboSouthSlots(cards []baseui.CardView, selected map[int]bool, biddingRaise map[int]bool, trumpSuit string) []southSlot {
@@ -248,7 +273,7 @@ func (g *GUI) comboSouthSlots(cards []baseui.CardView, selected map[int]bool, bi
 		if len(indices) == 0 {
 			continue
 		}
-		x := 58
+		x := centeredSouthHandX(len(indices))
 		for pos, idx := range indices {
 			if pos > 0 {
 				prev := cards[indices[pos-1]]
@@ -583,7 +608,7 @@ func (g *GUI) drawOverlay(screen *ebiten.Image, view baseui.TableView, selected 
 		vector.DrawFilledRect(screen, 80, 110, 480, 190, messageBgColor, false)
 		vector.StrokeRect(screen, 80, 110, 480, 190, 2, hiliteColor, false)
 		title := "升级（拖拉机）纸牌游戏"
-		subtitle := "两副牌 · 2为常主 · 4人对战"
+		subtitle := "两副牌 · 从2开始打 · 4人对战"
 		g.drawText(screen, title, LogicalWidth/2-(len(title)*7)/2, 145, color.RGBA{0xff, 0xd6, 0x54, 0xff})
 		g.drawText(screen, subtitle, LogicalWidth/2-(len(subtitle)*7)/2, 175, color.White)
 		hint := "点击下方按钮开始游戏"
