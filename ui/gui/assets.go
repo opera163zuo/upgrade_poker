@@ -7,19 +7,102 @@ import (
 	_ "image/png"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/font/opentype"
 )
 
-// 牌面图片缓存
-var cardImages [57]*ebiten.Image // 0-53 牌面, 54-56 牌背
+var cardImages [57]*ebiten.Image
 var cardImagesLoaded bool
+var (
+	uiFont     font.Face
+	uiFontOnce sync.Once
+)
 
-// 图片根目录：优先运行时目录，其次可执行文件同级 assets/
+func uiFontFace() font.Face {
+	uiFontOnce.Do(func() {
+		// 尝试加载系统自带中文字体
+		var fontPath string
+		switch runtime.GOOS {
+		case "windows":
+			// Windows 中文字体
+			candidates := []string{
+				"C:\\Windows\\Fonts\\msyh.ttc",    // 微软雅黑
+				"C:\\Windows\\Fonts\\simsun.ttc",   // 宋体
+				"C:\\Windows\\Fonts\\simhei.ttf",   // 黑体
+				"C:\\Windows\\Fonts\\yahei.ttf",
+			}
+			for _, p := range candidates {
+				if _, err := os.Stat(p); err == nil {
+					fontPath = p
+					break
+				}
+			}
+		case "linux":
+			candidates := []string{
+				"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+				"/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+				"/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", // 文泉驿
+			}
+			for _, p := range candidates {
+				if _, err := os.Stat(p); err == nil {
+					fontPath = p
+					break
+				}
+			}
+		}
+
+		if fontPath != "" {
+			data, err := os.ReadFile(fontPath)
+			if err == nil {
+				tt, err := opentype.Parse(data)
+				if err == nil {
+					f, err := opentype.NewFace(tt, &opentype.FaceOptions{
+						Size:    14,
+						DPI:     72,
+						Hinting: font.HintingFull,
+					})
+					if err == nil {
+						uiFont = f
+						return
+					}
+				}
+			}
+		}
+		// 方案二：加载本地assets/fonts/下的字体
+		dir := assetDir()
+		fontCandidates := []string{
+			filepath.Join(dir, "fonts", "NotoSansCJK-Regular.ttc"),
+			filepath.Join(dir, "fonts", "msyh.ttf"),
+			filepath.Join(dir, "fonts", "simsun.ttc"),
+		}
+		for _, p := range fontCandidates {
+			data, err := os.ReadFile(p)
+			if err == nil {
+				tt, err := opentype.Parse(data)
+				if err == nil {
+					f, _ := opentype.NewFace(tt, &opentype.FaceOptions{
+						Size: 14, DPI: 72, Hinting: font.HintingFull,
+					})
+					if f != nil {
+						uiFont = f
+						return
+					}
+				}
+			}
+		}
+		// 兜底：basicfont（不支持中文）
+		uiFont = basicfont.Face7x13
+	})
+	return uiFont
+}
 func assetDir() string {
 	exe, _ := os.Executable()
 	base := filepath.Dir(exe)
-	// 尝试几个可能的位置
 	candidates := []string{
 		filepath.Join(base, "assets"),
 		filepath.Join(base, "..", "assets"),
@@ -33,13 +116,11 @@ func assetDir() string {
 	return "assets"
 }
 
-// EnsureImagesLoaded ensures card images are loaded
 func EnsureImagesLoaded() error {
 	if cardImagesLoaded {
 		return nil
 	}
 	dir := assetDir()
-
 	for i := 0; i < 54; i++ {
 		path := filepath.Join(dir, "cards", "faces", fmt.Sprintf("%d.png", i))
 		img, err := loadImage(path)
@@ -48,8 +129,6 @@ func EnsureImagesLoaded() error {
 		}
 		cardImages[i] = img
 	}
-
-	// 牌背
 	backNames := []string{"back.png", "back2.png", "back3.png"}
 	for i, name := range backNames {
 		path := filepath.Join(dir, "cards", "backs", name)
@@ -59,7 +138,6 @@ func EnsureImagesLoaded() error {
 		}
 		cardImages[54+i] = img
 	}
-
 	cardImagesLoaded = true
 	return nil
 }
@@ -76,53 +154,31 @@ func loadImage(path string) (*ebiten.Image, error) {
 	return ebiten.NewImageFromImage(img), nil
 }
 
-// CardFaceImage returns the card face image for a Go card (suit, rank)
 func CardFaceImage(suit, rank int) *ebiten.Image {
-	if !cardImagesLoaded {
-		return nil
-	}
+	if !cardImagesLoaded { return nil }
 	idx := GoCardToCSharpNumber(suit, rank)
-	if idx < 0 || idx >= 54 {
-		return nil
-	}
+	if idx < 0 || idx >= 54 { return nil }
 	return cardImages[idx]
 }
 
-// CardBackImage returns a card back image
 func CardBackImage(index int) *ebiten.Image {
-	if !cardImagesLoaded || index < 0 || index > 2 {
-		return cardImages[54] // default back
-	}
+	if !cardImagesLoaded || index < 0 || index > 2 { return cardImages[54] }
 	return cardImages[54+index]
 }
 
-// IsImageLoaded returns whether card images are loaded
-func IsImageLoaded() bool {
-	return cardImagesLoaded
-}
+func IsImageLoaded() bool { return cardImagesLoaded }
 
-// GoCardToCSharpNumber maps Go card (suit, rank) to C# image index 0-53
-// C#: 0-12=♥, 13-25=♠, 26-38=♦, 39-51=♣, 52=小王, 53=大王
 func GoCardToCSharpNumber(suit, rank int) int {
 	if rank >= 15 {
-		if rank == 15 {
-			return 52
-		} // small joker
-		if rank == 16 {
-			return 53
-		} // big joker
+		if rank == 15 { return 52 }
+		if rank == 16 { return 53 }
 	}
-	// C# suit: 1=♥, 2=♠, 3=♦, 4=♣
-	// Go suit: 0=♠, 1=♥, 2=♦, 3=♣
 	csharpSuit := []int{2, 1, 3, 4}[suit]
 	csharpRank := rank - 2
 	return (csharpSuit-1)*13 + csharpRank
 }
 
-// FreeImages releases loaded images
 func FreeImages() {
-	for i := range cardImages {
-		cardImages[i] = nil
-	}
+	for i := range cardImages { cardImages[i] = nil }
 	cardImagesLoaded = false
 }

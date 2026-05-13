@@ -9,7 +9,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	baseui "github.com/smallnest/upgrade_poker/ui"
-	"golang.org/x/image/font/basicfont"
 )
 
 var (
@@ -23,7 +22,7 @@ var (
 )
 
 func (g *GUI) drawText(dst *ebiten.Image, s string, x, y int, clr color.Color) {
-	text.Draw(dst, s, basicfont.Face7x13, x, y, clr)
+	text.Draw(dst, s, uiFontFace(), x, y, clr)
 }
 
 func (g *GUI) Draw(screen *ebiten.Image) {
