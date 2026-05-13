@@ -8,11 +8,11 @@ const (
 	InfoBarX = 25
 	InfoBarY = 28
 	InfoBarW = 590
-	InfoBarH = 38
+	InfoBarH = 42
 	TableX   = 25
-	TableY   = 70
+	TableY   = 74
 	TableW   = 590
-	TableH   = 350
+	TableH   = 346
 	CardW    = 71
 	CardH    = 96
 
@@ -35,10 +35,14 @@ const (
 	ActionBtnH = 28
 	ActionBtnY = 438
 
-	BidPanelX = 170
-	BidPanelY = 126
-	BidPanelW = 300
-	BidBtnH   = 30
+	BidPanelX      = 396
+	BidPanelY      = 286
+	BidPanelW      = 194
+	BidPanelH      = 118
+	BidSymbolSize  = 30
+	BidSymbolGap   = 8
+	BidPrimaryBtnW = 76
+	BidSecondaryW  = 76
 )
 
 type rect struct{ x, y, w, h int }

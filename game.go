@@ -600,7 +600,15 @@ func (g *Game) showMessage(msg string, buttons []baseui.ButtonSpec) {
 
 func (g *Game) setBidOptions(bids []Bid) {
 	g.uiBidChoices = nil
-	for _, bid := range bids {
+	sorted := append([]Bid(nil), bids...)
+	suitOrder := map[Suit]int{SuitSpade: 0, SuitHeart: 1, SuitDiamond: 2, SuitClub: 3, SuitJoker: 4}
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].Priority != sorted[j].Priority {
+			return sorted[i].Priority > sorted[j].Priority
+		}
+		return suitOrder[sorted[i].Suit] < suitOrder[sorted[j].Suit]
+	})
+	for _, bid := range sorted {
 		suitName := bid.Suit.String()
 		if bid.Suit == SuitJoker {
 			suitName = "无主"

@@ -28,6 +28,7 @@ const (
 	ActionTimeout    ActionType = "timeout"
 	ActionHint       ActionType = "hint"
 	ActionToggleView ActionType = "toggle_view"
+	ActionSelectBid  ActionType = "select_bid"
 )
 
 type UIAction struct {

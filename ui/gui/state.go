@@ -8,15 +8,18 @@ import (
 )
 
 type state struct {
-	mu           sync.RWMutex
-	view         baseui.TableView
-	actionCh     chan baseui.UIAction
-	selected     map[int]bool
-	cardRects    []rect
-	buttonRects  []buttonRect
-	lastClick    time.Time
-	lastCardIdx  int
-	handViewMode string
+	mu                sync.RWMutex
+	view              baseui.TableView
+	actionCh          chan baseui.UIAction
+	selected          map[int]bool
+	cardRects         []rect
+	buttonRects       []buttonRect
+	lastClick         time.Time
+	lastCardIdx       int
+	handViewMode      string
+	selectedBidType   string
+	selectedBidSuit   string
+	selectedBidChoice string
 }
 
 type buttonRect struct {

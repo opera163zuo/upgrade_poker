@@ -36,6 +36,9 @@ func (g *GUI) updateInput() {
 		}
 		action := b.action
 		switch action.Type {
+		case baseui.ActionSelectBid:
+			g.chooseBid(action)
+			return
 		case baseui.ActionCancel:
 			g.clearSelected()
 			return
@@ -44,6 +47,9 @@ func (g *GUI) updateInput() {
 			return
 		case baseui.ActionToggleView:
 			g.toggleHandViewMode()
+			return
+		case baseui.ActionConfirm:
+			g.submitSelectionOrConfirm()
 			return
 		case baseui.ActionPlay:
 			action.CardIdx = g.selectedIndices()
@@ -106,9 +112,16 @@ func (g *GUI) quickBid() {
 	if phase != baseui.PhaseBidding {
 		return
 	}
+	if action, ok := g.currentSelectedBidAction(buttons); ok {
+		g.st.actionCh <- action
+		return
+	}
 	for _, b := range buttons {
-		if b.enabled && b.action.Type == baseui.ActionBid {
-			g.st.actionCh <- b.action
+		if b.enabled && b.action.Type == baseui.ActionSelectBid {
+			g.chooseBid(b.action)
+			if action, ok := g.currentSelectedBidAction(buttons); ok {
+				g.st.actionCh <- action
+			}
 			return
 		}
 	}
@@ -132,6 +145,12 @@ func (g *GUI) submitSelectionOrConfirm() {
 	waitingForHuman := g.st.view.WaitingForHuman
 	buttons := append([]buttonRect(nil), g.st.buttonRects...)
 	g.st.mu.RUnlock()
+	if phase == baseui.PhaseBidding {
+		if action, ok := g.currentSelectedBidAction(buttons); ok {
+			g.st.actionCh <- action
+		}
+		return
+	}
 	indices := g.selectedIndices()
 	if len(indices) > 0 {
 		switch phase {
@@ -228,4 +247,37 @@ func (g *GUI) toggleHandViewMode() {
 	}
 	g.st.view.HandViewMode = g.st.handViewMode
 	g.st.mu.Unlock()
+}
+
+func (g *GUI) chooseBid(action baseui.UIAction) {
+	g.st.mu.Lock()
+	g.st.selectedBidType = action.BidType
+	g.st.selectedBidSuit = action.BidSuit
+	g.st.selectedBidChoice = action.BidType + "|" + action.BidSuit
+	g.st.mu.Unlock()
+}
+
+func (g *GUI) currentSelectedBidAction(buttons []buttonRect) (baseui.UIAction, bool) {
+	g.st.mu.RLock()
+	selectedKey := g.st.selectedBidChoice
+	selectedSuit := g.st.selectedBidSuit
+	g.st.mu.RUnlock()
+	for _, b := range buttons {
+		if !b.enabled || b.action.Type != baseui.ActionSelectBid {
+			continue
+		}
+		key := b.action.BidType + "|" + b.action.BidSuit
+		if key == selectedKey {
+			return baseui.UIAction{Type: baseui.ActionBid, BidType: b.action.BidType, BidSuit: b.action.BidSuit}, true
+		}
+	}
+	for _, b := range buttons {
+		if !b.enabled || b.action.Type != baseui.ActionSelectBid {
+			continue
+		}
+		if b.action.BidSuit == selectedSuit {
+			return baseui.UIAction{Type: baseui.ActionBid, BidType: b.action.BidType, BidSuit: b.action.BidSuit}, true
+		}
+	}
+	return baseui.UIAction{}, false
 }

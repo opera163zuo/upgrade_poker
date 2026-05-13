@@ -45,6 +45,11 @@ func (g *GUI) Render(view baseui.TableView) {
 			g.st.selected[k] = v
 		}
 	}
+	if view.Phase != baseui.PhaseBidding {
+		g.st.selectedBidType = ""
+		g.st.selectedBidSuit = ""
+		g.st.selectedBidChoice = ""
+	}
 	g.st.mu.Unlock()
 }
 

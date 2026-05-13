@@ -50,6 +50,9 @@ func (g *GUI) Draw(screen *ebiten.Image) {
 	for k, v := range g.st.selected {
 		selected[k] = v
 	}
+	if view.Phase == baseui.PhaseBidding {
+		g.ensureBidSelectionLocked()
+	}
 	g.st.mu.Unlock()
 
 	vector.DrawFilledRect(screen, float32(TableX), float32(TableY), float32(TableW), float32(TableH), tableColor, false)
@@ -69,26 +72,45 @@ func (g *GUI) Draw(screen *ebiten.Image) {
 }
 
 func (g *GUI) drawInfoBar(screen *ebiten.Image, view baseui.TableView, selected map[int]bool) {
-	line1 := fmt.Sprintf("庄家 %s    主花色 %s    级别 %s / %s    比分 南北 %d : 东西 %d", view.Dealer, view.TrumpSuit, view.DealerLevel, view.OpponentLevel, view.TeamScore[0], view.TeamScore[1])
-	line2 := fmt.Sprintf("当前第 %d / 25 轮    手牌 南%d 西%d 北%d 东%d    %s", view.TrickCount+1, view.Players[0].HandCount, view.Players[1].HandCount, view.Players[2].HandCount, view.Players[3].HandCount, g.statusLine(view, selected))
-	g.drawText(screen, line1, InfoBarX+8, InfoBarY+15, color.White)
-	g.drawText(screen, line2, InfoBarX+8, InfoBarY+32, hiliteColor)
+	leftW := 246
+	midW := 176
+	rightW := 144
+	g.drawStatusBox(screen, InfoBarX+6, InfoBarY+6, leftW, 30, color.RGBA{0x17, 0x35, 0x26, 0xff}, fmt.Sprintf("庄家 %s · 主花色 %s", view.Dealer, view.TrumpSuit), color.White)
+	g.drawLevelPair(screen, InfoBarX+16+leftW, InfoBarY+6, midW, 30, view.DealerLevel, view.OpponentLevel)
+	g.drawStatusBox(screen, InfoBarX+26+leftW+midW, InfoBarY+6, rightW, 30, color.RGBA{0x18, 0x24, 0x34, 0xff}, fmt.Sprintf("得分 %d : %d", view.TeamScore[0], view.TeamScore[1]), hiliteColor)
+	line2 := fmt.Sprintf("第 %d / 25 轮 · 手牌 南%d 西%d 北%d 东%d · %s", view.TrickCount+1, view.Players[0].HandCount, view.Players[1].HandCount, view.Players[2].HandCount, view.Players[3].HandCount, g.statusLine(view, selected))
+	g.drawText(screen, line2, InfoBarX+8, InfoBarY+39, color.RGBA{0xd5, 0xe5, 0xd5, 0xff})
+}
+
+func (g *GUI) drawStatusBox(screen *ebiten.Image, x, y, w, h int, fill color.Color, label string, textColor color.Color) {
+	vector.DrawFilledRect(screen, float32(x), float32(y), float32(w), float32(h), fill, false)
+	vector.StrokeRect(screen, float32(x), float32(y), float32(w), float32(h), 1, color.RGBA{0xe9, 0xe9, 0xe9, 0xff}, false)
+	g.drawText(screen, label, x+10, y+h/2+4, textColor)
+}
+
+func (g *GUI) drawLevelPair(screen *ebiten.Image, x, y, w, h int, ourLevel, oppLevel string) {
+	half := (w - 10) / 2
+	g.drawStatusBox(screen, x, y, half, h, color.RGBA{0xf0, 0xf4, 0xfc, 0xff}, "我方 "+ourLevel, color.RGBA{0x2d, 0x65, 0xc4, 0xff})
+	g.drawStatusBox(screen, x+half+10, y, half, h, color.RGBA{0xfb, 0xf1, 0xf1, 0xff}, "敌方 "+oppLevel, color.RGBA{0xc8, 0x39, 0x39, 0xff})
 }
 
 func (g *GUI) statusLine(view baseui.TableView, selected map[int]bool) string {
 	switch view.Phase {
+	case baseui.PhaseDealing:
+		return "发牌中... 若拿到级牌可立即亮主"
 	case baseui.PhaseBidding:
-		return "发牌中可亮主 / B 亮主 / P 不亮"
+		return "请选择亮主花色，然后点击“亮主”确认 / P 不亮"
 	case baseui.PhaseDiscard:
-		return fmt.Sprintf("请选择 8 张扣底（已选 %d/8） / Tab 切视图", len(selected))
+		return fmt.Sprintf("请垫底牌（已选 %d/8） / Enter 扣底 / Tab 切视图", len(selected))
 	case baseui.PhasePlaying:
 		if view.WaitingForHuman {
 			hint := ""
 			if view.CanHint {
 				hint = " / H 提示"
 			}
-			return fmt.Sprintf("点击选牌，双击或 Enter 出牌（已选 %d 张）%s / Tab 切视图", len(selected), hint)
+			return fmt.Sprintf("请你出牌（已选 %d 张）/ 双击或 Enter 出牌%s / Tab 切视图", len(selected), hint)
 		}
+		return "等待其他玩家出牌..."
 	case baseui.PhaseWaitTrick:
 		if view.TrickWinner != "" {
 			return fmt.Sprintf("本轮 %s 赢得 %d 分", view.TrickWinner, view.TrickPoints)
@@ -162,18 +184,22 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 	if mode == "" {
 		mode = "combo"
 	}
+	biddingRaise := map[int]bool{}
+	if view.Phase == baseui.PhaseBidding {
+		biddingRaise = g.biddingRaisedCards(view)
+	}
 	label := fmt.Sprintf("%s · %s", pv.Name, map[string]string{"combo": "牌型视图", "flat": "普通排序"}[mode])
 	g.drawText(screen, label, 236, 350, color.White)
 	var slots []southSlot
 	if mode == "combo" {
-		slots = g.comboSouthSlots(pv.HandCards, selected, view.TrumpSuit)
+		slots = g.comboSouthSlots(pv.HandCards, selected, biddingRaise, view.TrumpSuit)
 		g.drawSouthGroupBackdrops(screen, pv.HandCards, slots, view.TrumpSuit)
 	} else {
-		slots = g.flatSouthSlots(pv.HandCards, selected)
+		slots = g.flatSouthSlots(pv.HandCards, selected, biddingRaise)
 	}
 	for _, slot := range slots {
 		c := pv.HandCards[slot.idx]
-		g.drawCardWithAlpha(screen, slot.x, slot.y, c, selected[slot.idx], 1)
+		g.drawCardWithAlpha(screen, slot.x, slot.y, c, selected[slot.idx] || biddingRaise[slot.idx], 1)
 	}
 	rects := make([]rect, len(slots))
 	for i, slot := range slots {
@@ -184,12 +210,12 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 	g.st.mu.Unlock()
 }
 
-func (g *GUI) flatSouthSlots(cards []baseui.CardView, selected map[int]bool) []southSlot {
+func (g *GUI) flatSouthSlots(cards []baseui.CardView, selected map[int]bool, biddingRaise map[int]bool) []southSlot {
 	slots := make([]southSlot, 0, len(cards))
 	for i := range cards {
 		x := SouthHandX + i*SouthHandGap
 		y := SouthHandY
-		if selected[i] {
+		if selected[i] || biddingRaise[i] {
 			y -= 14
 		}
 		w := SouthHandGap
@@ -201,7 +227,7 @@ func (g *GUI) flatSouthSlots(cards []baseui.CardView, selected map[int]bool) []s
 	return slots
 }
 
-func (g *GUI) comboSouthSlots(cards []baseui.CardView, selected map[int]bool, trumpSuit string) []southSlot {
+func (g *GUI) comboSouthSlots(cards []baseui.CardView, selected map[int]bool, biddingRaise map[int]bool, trumpSuit string) []southSlot {
 	order := g.suitRowOrder(cards, trumpSuit)
 	rowY := map[string]int{}
 	baseY := 308
@@ -236,7 +262,7 @@ func (g *GUI) comboSouthSlots(cards []baseui.CardView, selected map[int]bool, tr
 				x += gap
 			}
 			y := rowY[suit]
-			if selected[idx] {
+			if selected[idx] || biddingRaise[idx] {
 				y -= 12
 			}
 			w := 18
@@ -338,7 +364,7 @@ func suitLabel(suit string, isTrump bool) string {
 
 func (g *GUI) drawMenuBar(screen *ebiten.Image) {
 	vector.DrawFilledRect(screen, 0, 0, LogicalWidth, MenuBarH, color.RGBA{0x0d, 0x17, 0x22, 0xff}, false)
-	g.drawText(screen, "游戏(G)  功能(F)  设定(S)  帮助(H)", 10, 14, color.RGBA{0xaa, 0xcc, 0xaa, 0xff})
+	g.drawText(screen, "游戏(G)  网络(N)  设定(S)  功能(F)  注册(R)  帮助(H)", 10, 14, color.RGBA{0xaa, 0xcc, 0xaa, 0xff})
 }
 
 func (g *GUI) drawButtons(screen *ebiten.Image, view baseui.TableView, selected map[int]bool) {
@@ -390,15 +416,147 @@ func sanitizeButtonLabel(label string) string {
 	return strings.Trim(label, "[]")
 }
 
-func (g *GUI) drawBidButtons(screen *ebiten.Image, view baseui.TableView) {
-	vector.DrawFilledRect(screen, BidPanelX, BidPanelY, BidPanelW, float32(44+len(view.BidChoices)*36), messageBgColor, false)
-	vector.StrokeRect(screen, BidPanelX, BidPanelY, BidPanelW, float32(44+len(view.BidChoices)*36), 2, hiliteColor, false)
-	g.drawText(screen, "请选择亮主方式", BidPanelX+90, BidPanelY+22, color.White)
-	for i, choice := range view.BidChoices {
-		y := BidPanelY + 34 + i*36
-		g.drawActionButton(screen, BidPanelX+20, y, BidPanelW-40, BidBtnH, choice.Text, baseui.UIAction{Type: baseui.ActionBid, BidType: choice.Type, BidSuit: choice.Suit}, true, false)
+func (g *GUI) bidSuitButtons(view baseui.TableView) []baseui.BidChoice {
+	choices := make([]baseui.BidChoice, 0, 4)
+	seen := map[string]bool{}
+	for _, suit := range []string{"黑桃", "红心", "方块", "梅花"} {
+		best, ok := g.bestBidChoiceForSuit(view.BidChoices, suit)
+		if !ok {
+			continue
+		}
+		if seen[best.Suit] {
+			continue
+		}
+		seen[best.Suit] = true
+		choices = append(choices, best)
 	}
-	g.drawActionButton(screen, BidPanelX+20, BidPanelY+34+len(view.BidChoices)*36, BidPanelW-40, BidBtnH, "不亮", baseui.UIAction{Type: baseui.ActionPass}, true, true)
+	return choices
+}
+
+func (g *GUI) bidSpecialChoice(view baseui.TableView) (baseui.BidChoice, bool) {
+	return g.bestBidChoiceForSuit(view.BidChoices, "王")
+}
+
+func (g *GUI) bestBidChoiceForSuit(choices []baseui.BidChoice, suit string) (baseui.BidChoice, bool) {
+	var best baseui.BidChoice
+	ok := false
+	for _, choice := range choices {
+		if choice.Suit != suit {
+			continue
+		}
+		if !ok || bidPriority(choice.Type) > bidPriority(best.Type) {
+			best = choice
+			ok = true
+		}
+	}
+	return best, ok
+}
+
+func bidPriority(kind string) int {
+	switch kind {
+	case "对王(无主)":
+		return 3
+	case "三张级牌":
+		return 2
+	case "对级牌":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func (g *GUI) drawBidSuitButton(screen *ebiten.Image, x, y int, choice baseui.BidChoice, selected bool) {
+	fill := color.RGBA{0xb8, 0xbd, 0xc5, 0xff}
+	stroke := color.RGBA{0x55, 0x5d, 0x66, 0xff}
+	textColor := color.Black
+	if selected {
+		fill = color.RGBA{0x4d, 0x8f, 0xff, 0xff}
+		stroke = hiliteColor
+		textColor = color.White
+	}
+	vector.DrawFilledRect(screen, float32(x), float32(y), float32(BidSymbolSize), float32(BidSymbolSize), fill, false)
+	vector.StrokeRect(screen, float32(x), float32(y), float32(BidSymbolSize), float32(BidSymbolSize), 2, stroke, false)
+	symbol := choice.Suit
+	if choice.Suit != "王" {
+		symbol = suitLabel(choice.Suit, false)
+	}
+	g.drawText(screen, symbol, x+10, y+21, textColor)
+	g.st.mu.Lock()
+	g.st.buttonRects = append(g.st.buttonRects, buttonRect{rect: rect{x: x, y: y, w: BidSymbolSize, h: BidSymbolSize}, action: baseui.UIAction{Type: baseui.ActionSelectBid, BidType: choice.Type, BidSuit: choice.Suit}, enabled: true})
+	g.st.mu.Unlock()
+}
+
+func (g *GUI) ensureBidSelectionLocked() {
+	if len(g.st.view.BidChoices) == 0 {
+		g.st.selectedBidType = ""
+		g.st.selectedBidSuit = ""
+		g.st.selectedBidChoice = ""
+		return
+	}
+	for _, choice := range g.st.view.BidChoices {
+		if choice.Type+"|"+choice.Suit == g.st.selectedBidChoice {
+			return
+		}
+	}
+	for _, choice := range g.st.view.BidChoices {
+		if choice.Suit == g.st.selectedBidSuit && choice.Type == g.st.selectedBidType {
+			g.st.selectedBidChoice = choice.Type + "|" + choice.Suit
+			return
+		}
+	}
+	preferred := g.bidSuitButtons(g.st.view)
+	if len(preferred) == 0 {
+		if special, ok := g.bidSpecialChoice(g.st.view); ok {
+			g.st.selectedBidType = special.Type
+			g.st.selectedBidSuit = special.Suit
+			g.st.selectedBidChoice = special.Type + "|" + special.Suit
+		}
+		return
+	}
+	choice := preferred[0]
+	g.st.selectedBidType = choice.Type
+	g.st.selectedBidSuit = choice.Suit
+	g.st.selectedBidChoice = choice.Type + "|" + choice.Suit
+}
+
+func (g *GUI) biddingRaisedCards(view baseui.TableView) map[int]bool {
+	result := map[int]bool{}
+	g.st.mu.RLock()
+	suit := g.st.selectedBidSuit
+	g.st.mu.RUnlock()
+	if suit == "" || len(view.Players) == 0 {
+		return result
+	}
+	for idx, c := range view.Players[0].HandCards {
+		if c.Rank == view.DealerLevel && c.Suit == suit {
+			result[idx] = true
+		}
+	}
+	return result
+}
+
+func (g *GUI) drawBidButtons(screen *ebiten.Image, view baseui.TableView) {
+	vector.DrawFilledRect(screen, float32(BidPanelX), float32(BidPanelY), float32(BidPanelW), float32(BidPanelH), color.RGBA{0x1e, 0x26, 0x31, 0xe8}, false)
+	vector.StrokeRect(screen, float32(BidPanelX), float32(BidPanelY), float32(BidPanelW), float32(BidPanelH), 2, hiliteColor, false)
+	g.drawText(screen, "请选择亮主花色", BidPanelX+18, BidPanelY+20, color.White)
+
+	g.st.mu.RLock()
+	selectedKey := g.st.selectedBidChoice
+	g.st.mu.RUnlock()
+
+	choices := g.bidSuitButtons(view)
+	startX := BidPanelX + 18
+	y := BidPanelY + 34
+	for i, choice := range choices {
+		x := startX + i*(BidSymbolSize+BidSymbolGap)
+		selected := choice.Type+"|"+choice.Suit == selectedKey
+		g.drawBidSuitButton(screen, x, y, choice, selected)
+	}
+	if special, ok := g.bidSpecialChoice(view); ok {
+		g.drawActionButton(screen, BidPanelX+18, BidPanelY+72, 76, 26, "无主", baseui.UIAction{Type: baseui.ActionSelectBid, BidType: special.Type, BidSuit: special.Suit}, true, special.Type+"|"+special.Suit != selectedKey)
+	}
+	g.drawActionButton(screen, BidPanelX+BidPanelW-168, BidPanelY+72, BidPrimaryBtnW, 26, "亮主", baseui.UIAction{Type: baseui.ActionConfirm}, selectedKey != "", false)
+	g.drawActionButton(screen, BidPanelX+BidPanelW-84, BidPanelY+72, BidSecondaryW, 26, "不亮", baseui.UIAction{Type: baseui.ActionPass}, true, true)
 }
 
 func (g *GUI) drawActionButton(screen *ebiten.Image, x, y, w, h int, label string, action baseui.UIAction, enabled bool, secondary bool) {
@@ -454,7 +612,13 @@ func (g *GUI) drawOverlay(screen *ebiten.Image, view baseui.TableView, selected 
 	if view.Phase == baseui.PhaseDiscard {
 		vector.DrawFilledRect(screen, 176, 84, 290, 38, messageBgColor, false)
 		vector.StrokeRect(screen, 176, 84, 290, 38, 1, hiliteColor, false)
-		g.drawText(screen, fmt.Sprintf("请选择 8 张扣底（已选 %d/8）", len(selected)), 193, 108, color.White)
+		g.drawText(screen, fmt.Sprintf("请垫底牌（已选 %d/8）", len(selected)), 205, 108, color.White)
+	}
+
+	if view.Phase == baseui.PhaseDealing {
+		vector.DrawFilledRect(screen, 208, 84, 224, 38, messageBgColor, false)
+		vector.StrokeRect(screen, 208, 84, 224, 38, 1, hiliteColor, false)
+		g.drawText(screen, "发牌中...", 286, 108, color.White)
 	}
 
 	if view.Message == "" || view.Phase == baseui.PhaseBidding {
