@@ -13,15 +13,13 @@ type GUI struct {
 }
 
 func New() *GUI {
-	return &GUI{st: &state{actionCh: make(chan baseui.UIAction, 16), selected: map[int]bool{}}}
+	return &GUI{st: &state{actionCh: make(chan baseui.UIAction, 16), selected: map[int]bool{}, handViewMode: "combo"}}
 }
 
 func (g *GUI) Init() error {
 	ebiten.SetWindowSize(LogicalWidth*2, LogicalHeight*2)
 	ebiten.SetWindowTitle("upgrade_poker - Ebitengine GUI")
-	// 图片加载失败不退出一耐心等待assets目录
 	if err := EnsureImagesLoaded(); err != nil {
-		// 静默失败，使用备选纯色方块渲染
 	}
 	return nil
 }
@@ -36,6 +34,10 @@ func (g *GUI) Close() error { return nil }
 func (g *GUI) Render(view baseui.TableView) {
 	g.st.mu.Lock()
 	view.UpdatedAt = time.Now()
+	if g.st.handViewMode == "" {
+		g.st.handViewMode = "combo"
+	}
+	view.HandViewMode = g.st.handViewMode
 	g.st.view = view
 	if view.SelectedIdx != nil {
 		g.st.selected = map[int]bool{}

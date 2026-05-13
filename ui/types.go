@@ -18,14 +18,16 @@ const (
 type ActionType string
 
 const (
-	ActionStart   ActionType = "start"
-	ActionPlay    ActionType = "play"
-	ActionCancel  ActionType = "cancel"
-	ActionBid     ActionType = "bid"
-	ActionPass    ActionType = "pass"
-	ActionConfirm ActionType = "confirm"
-	ActionQuit    ActionType = "quit"
-	ActionTimeout ActionType = "timeout"
+	ActionStart      ActionType = "start"
+	ActionPlay       ActionType = "play"
+	ActionCancel     ActionType = "cancel"
+	ActionBid        ActionType = "bid"
+	ActionPass       ActionType = "pass"
+	ActionConfirm    ActionType = "confirm"
+	ActionQuit       ActionType = "quit"
+	ActionTimeout    ActionType = "timeout"
+	ActionHint       ActionType = "hint"
+	ActionToggleView ActionType = "toggle_view"
 )
 
 type UIAction struct {
@@ -48,13 +50,15 @@ type BidChoice struct {
 }
 
 type CardView struct {
-	Label  string
-	Suit   string
-	Rank   string
-	SuitNum int  // 0=♠ 1=♥ 2=♦ 3=♣ 4=N/A
-	RankNum int  // 2-14, 15=SmallJoker, 16=BigJoker
-	FaceUp bool
-	Trump  bool
+	Label         string
+	Suit          string
+	Rank          string
+	SuitNum       int // 0=♠ 1=♥ 2=♦ 3=♣ 4=N/A
+	RankNum       int // 2-14, 15=SmallJoker, 16=BigJoker
+	FaceUp        bool
+	Trump         bool
+	EffectiveSuit string
+	IsTractor     bool
 }
 
 type PlayerView struct {
@@ -69,25 +73,29 @@ type PlayerView struct {
 }
 
 type TableView struct {
-	Phase           UIPhase
-	TrumpSuit       string
-	Dealer          string
-	DealerLevel     string
-	OpponentLevel   string
-	TeamScore       [2]int
-	TrickCount      int
-	BottomCards     []CardView
-	CurrentTrick    map[string][]CardView
-	Message         string
-	Buttons         []ButtonSpec
-	BidChoices      []BidChoice
-	Players         [4]PlayerView
-	WaitingForHuman bool
-	SelectedIdx     map[int]bool
-	NeedSelect      int
-	DiscardCount    int
-	TrickWinner     string
-	TrickPoints     int
-	DealCounts      [4]int
-	UpdatedAt       time.Time
+	Phase             UIPhase
+	TrumpSuit         string
+	Dealer            string
+	DealerLevel       string
+	OpponentLevel     string
+	TeamScore         [2]int
+	TrickCount        int
+	BottomCards       []CardView
+	CurrentTrick      map[string][]CardView
+	Message           string
+	Buttons           []ButtonSpec
+	BidChoices        []BidChoice
+	Players           [4]PlayerView
+	WaitingForHuman   bool
+	SelectedIdx       map[int]bool
+	NeedSelect        int
+	DiscardCount      int
+	TrickWinner       string
+	TrickPoints       int
+	DealCounts        [4]int
+	HintCardIdx       []int
+	CanHint           bool
+	HandViewMode      string
+	CanToggleHandView bool
+	UpdatedAt         time.Time
 }

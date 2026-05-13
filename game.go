@@ -665,25 +665,82 @@ func (g *Game) BuildDrawOrder(pos PlayerPosition) []Card {
 	return drawOrder
 }
 
+func (g *Game) tractorMarks(cards []Card) map[Card]bool {
+	marks := map[Card]bool{}
+	groups := GroupBySuit(cards, g.TrumpSuit, g.DealerLevel())
+	for _, group := range groups {
+		for _, tractor := range findTractorsInCards(group, g.TrumpSuit, g.DealerLevel()) {
+			for _, c := range tractor {
+				marks[c] = true
+			}
+		}
+	}
+	return marks
+}
+
+func (g *Game) buildHintCardIdx() []int {
+	if g.uiPhase != baseui.PhasePlaying || !g.uiWaitingForHuman || g.CurrentTrick == nil {
+		return nil
+	}
+	human := g.Players[PositionSouth]
+	if human == nil || len(human.Hand) == 0 {
+		return nil
+	}
+	clone := &Game{TrumpSuit: g.TrumpSuit, Level: g.Level, Dealer: g.Dealer}
+	for i, p := range g.Players {
+		if p == nil {
+			continue
+		}
+		handCopy := append([]Card(nil), p.Hand...)
+		clone.Players[i] = &Player{Position: p.Position, Name: p.Name, IsHuman: p.IsHuman, Hand: handCopy}
+	}
+	suggested := aiPlay(clone.Players[PositionSouth], g.CurrentTrick, clone)
+	if len(suggested) == 0 {
+		return nil
+	}
+	indices := make([]int, 0, len(suggested))
+	used := map[int]bool{}
+	for _, want := range suggested {
+		matched := false
+		for idx, card := range g.drawOrder {
+			if used[idx] {
+				continue
+			}
+			if card == want {
+				indices = append(indices, idx)
+				used[idx] = true
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return nil
+		}
+	}
+	sort.Ints(indices)
+	return indices
+}
+
 func (g *Game) UISnapshot() baseui.TableView {
 	view := baseui.TableView{
-		Phase:           g.uiPhase,
-		TrumpSuit:       g.TrumpSuit.String(),
-		Dealer:          formatPosition(g.Dealer),
-		DealerLevel:     LevelDisplayName(g.DealerLevel()),
-		OpponentLevel:   LevelDisplayName(g.Level[g.OpponentTeam()]),
-		TeamScore:       g.TeamScore,
-		TrickCount:      g.TrickCount,
-		Message:         g.uiMessage,
-		Buttons:         append([]baseui.ButtonSpec(nil), g.uiButtons...),
-		BidChoices:      append([]baseui.BidChoice(nil), g.uiBidChoices...),
-		WaitingForHuman: g.uiWaitingForHuman,
-		SelectedIdx:     map[int]bool{},
-		DiscardCount:    g.uiDiscardCount,
-		TrickWinner:     formatPosition(g.uiTrickWinner),
-		TrickPoints:     g.uiTrickPoints,
-		DealCounts:      g.uiDealCounts,
-		CurrentTrick:    map[string][]baseui.CardView{},
+		Phase:             g.uiPhase,
+		TrumpSuit:         g.TrumpSuit.String(),
+		Dealer:            formatPosition(g.Dealer),
+		DealerLevel:       LevelDisplayName(g.DealerLevel()),
+		OpponentLevel:     LevelDisplayName(g.Level[g.OpponentTeam()]),
+		TeamScore:         g.TeamScore,
+		TrickCount:        g.TrickCount,
+		Message:           g.uiMessage,
+		Buttons:           append([]baseui.ButtonSpec(nil), g.uiButtons...),
+		BidChoices:        append([]baseui.BidChoice(nil), g.uiBidChoices...),
+		WaitingForHuman:   g.uiWaitingForHuman,
+		SelectedIdx:       map[int]bool{},
+		DiscardCount:      g.uiDiscardCount,
+		TrickWinner:       formatPosition(g.uiTrickWinner),
+		TrickPoints:       g.uiTrickPoints,
+		DealCounts:        g.uiDealCounts,
+		CurrentTrick:      map[string][]baseui.CardView{},
+		CanToggleHandView: true,
 	}
 	for k, v := range g.uiSelectedIdx {
 		view.SelectedIdx[k] = v
@@ -702,11 +759,22 @@ func (g *Game) UISnapshot() baseui.TableView {
 		}
 		if p.IsHuman {
 			drawOrder := g.BuildDrawOrder(p.Position)
+			tractorMarks := g.tractorMarks(drawOrder)
 			if p.Position == PositionSouth {
 				g.drawOrder = append(g.drawOrder[:0], drawOrder...)
 			}
 			for _, c := range drawOrder {
-				pv.HandCards = append(pv.HandCards, baseui.CardView{Label: c.String(), Suit: c.Suit.Symbol(), Rank: c.Rank.String(), SuitNum: int(c.Suit), RankNum: int(c.Rank), FaceUp: true, Trump: IsTrump(c, g.TrumpSuit, g.DealerLevel())})
+				pv.HandCards = append(pv.HandCards, baseui.CardView{
+					Label:         c.String(),
+					Suit:          c.Suit.Symbol(),
+					Rank:          c.Rank.String(),
+					SuitNum:       int(c.Suit),
+					RankNum:       int(c.Rank),
+					FaceUp:        true,
+					Trump:         IsTrump(c, g.TrumpSuit, g.DealerLevel()),
+					EffectiveSuit: EffectiveSuit(c, g.TrumpSuit, g.DealerLevel()).String(),
+					IsTractor:     tractorMarks[c],
+				})
 			}
 		}
 		if g.CurrentTrick != nil {
@@ -723,6 +791,8 @@ func (g *Game) UISnapshot() baseui.TableView {
 	for _, c := range g.BottomCards {
 		view.BottomCards = append(view.BottomCards, baseui.CardView{Label: c.String(), Suit: c.Suit.Symbol(), Rank: c.Rank.String(), SuitNum: int(c.Suit), RankNum: int(c.Rank), FaceUp: true, Trump: IsTrump(c, g.TrumpSuit, g.DealerLevel())})
 	}
+	view.HintCardIdx = g.buildHintCardIdx()
+	view.CanHint = len(view.HintCardIdx) > 0
 	return view
 }
 

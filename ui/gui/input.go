@@ -27,6 +27,7 @@ func (g *GUI) updateInput() {
 	cardRects := append([]rect(nil), g.st.cardRects...)
 	phase := g.st.view.Phase
 	waitingForHuman := g.st.view.WaitingForHuman
+	hintIdx := append([]int(nil), g.st.view.HintCardIdx...)
 	g.st.mu.RUnlock()
 
 	for _, b := range buttonRects {
@@ -34,13 +35,17 @@ func (g *GUI) updateInput() {
 			continue
 		}
 		action := b.action
-		if action.Type == baseui.ActionCancel {
-			g.st.mu.Lock()
-			g.st.selected = map[int]bool{}
-			g.st.mu.Unlock()
+		switch action.Type {
+		case baseui.ActionCancel:
+			g.clearSelected()
 			return
-		}
-		if action.Type == baseui.ActionPlay {
+		case baseui.ActionHint:
+			g.applyHintSelection(hintIdx)
+			return
+		case baseui.ActionToggleView:
+			g.toggleHandViewMode()
+			return
+		case baseui.ActionPlay:
 			action.CardIdx = g.selectedIndices()
 			if len(action.CardIdx) == 0 {
 				return
@@ -74,9 +79,7 @@ func (g *GUI) updateInput() {
 
 func (g *GUI) handleKeyboard() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		g.st.mu.Lock()
-		g.st.selected = map[int]bool{}
-		g.st.mu.Unlock()
+		g.clearSelected()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 		g.submitSelectionOrConfirm()
@@ -86,6 +89,12 @@ func (g *GUI) handleKeyboard() {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
 		g.submitFixedAction(baseui.ActionPass)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+		g.toggleHandViewMode()
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyH) {
+		g.applyCurrentHint()
 	}
 }
 
@@ -183,4 +192,40 @@ func (g *GUI) discardCount() int {
 	g.st.mu.RLock()
 	defer g.st.mu.RUnlock()
 	return g.st.view.DiscardCount
+}
+
+func (g *GUI) clearSelected() {
+	g.st.mu.Lock()
+	g.st.selected = map[int]bool{}
+	g.st.mu.Unlock()
+}
+
+func (g *GUI) applyCurrentHint() {
+	g.st.mu.RLock()
+	hintIdx := append([]int(nil), g.st.view.HintCardIdx...)
+	g.st.mu.RUnlock()
+	g.applyHintSelection(hintIdx)
+}
+
+func (g *GUI) applyHintSelection(indices []int) {
+	if len(indices) == 0 {
+		return
+	}
+	g.st.mu.Lock()
+	g.st.selected = map[int]bool{}
+	for _, idx := range indices {
+		g.st.selected[idx] = true
+	}
+	g.st.mu.Unlock()
+}
+
+func (g *GUI) toggleHandViewMode() {
+	g.st.mu.Lock()
+	if g.st.handViewMode == "combo" {
+		g.st.handViewMode = "flat"
+	} else {
+		g.st.handViewMode = "combo"
+	}
+	g.st.view.HandViewMode = g.st.handViewMode
+	g.st.mu.Unlock()
 }

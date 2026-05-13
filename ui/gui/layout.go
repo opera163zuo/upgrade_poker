@@ -6,26 +6,26 @@ const (
 	LogicalHeight = 480
 
 	InfoBarX = 25
-	InfoBarY = 8
+	InfoBarY = 28
 	InfoBarW = 590
-	InfoBarH = 24
+	InfoBarH = 38
 	TableX   = 25
-	TableY   = 40
+	TableY   = 70
 	TableW   = 590
-	TableH   = 400
+	TableH   = 350
 	CardW    = 71
 	CardH    = 96
 
-	SouthHandX   = 30
-	SouthHandY   = 375
+	SouthHandX   = 32
+	SouthHandY   = 376
 	SouthHandGap = 18
-	NorthHandY   = 25
+	NorthHandY   = 78
 	NorthHandGap = 13
-	WestHandX    = 6
-	WestHandY    = 145
+	WestHandX    = 16
+	WestHandY    = 150
 	WestHandGap  = 4
 	EastHandX    = 554
-	EastHandY    = 241
+	EastHandY    = 246
 	EastHandGap  = 4
 	BottomX      = 230
 	BottomY      = 186
@@ -33,7 +33,7 @@ const (
 
 	ActionBtnW = 96
 	ActionBtnH = 28
-	ActionBtnY = 440
+	ActionBtnY = 438
 
 	BidPanelX = 170
 	BidPanelY = 126
