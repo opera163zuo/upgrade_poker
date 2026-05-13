@@ -51,6 +51,8 @@ type CardView struct {
 	Label  string
 	Suit   string
 	Rank   string
+	SuitNum int  // 0=♠ 1=♥ 2=♦ 3=♣ 4=N/A
+	RankNum int  // 2-14, 15=SmallJoker, 16=BigJoker
 	FaceUp bool
 	Trump  bool
 }

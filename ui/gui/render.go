@@ -139,6 +139,32 @@ func (g *GUI) drawOverlay(screen *ebiten.Image, view baseui.TableView) {
 }
 
 func (g *GUI) drawCard(screen *ebiten.Image, x, y int, c baseui.CardView, selected bool) {
+	// 优先绘制真实牌面图片
+	if IsImageLoaded() && c.FaceUp && c.RankNum > 0 {
+		img := CardFaceImage(c.SuitNum, c.RankNum)
+		if img != nil {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(float64(CardW)/float64(img.Bounds().Dx()), float64(CardH)/float64(img.Bounds().Dy()))
+			op.GeoM.Translate(float64(x), float64(y))
+			if selected {
+				op.GeoM.Translate(0, -20)
+			}
+			screen.DrawImage(img, op)
+			return
+		}
+	}
+	if IsImageLoaded() && !c.FaceUp {
+		img := CardBackImage(0)
+		if img != nil {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(float64(CardW)/float64(img.Bounds().Dx()), float64(CardH)/float64(img.Bounds().Dy()))
+			op.GeoM.Translate(float64(x), float64(y))
+			screen.DrawImage(img, op)
+			return
+		}
+	}
+
+	// 备选：纯色方块渲染
 	fill := cardFaceColor
 	if !c.FaceUp {
 		fill = cardBackColor
@@ -162,4 +188,12 @@ func (g *GUI) drawCard(screen *ebiten.Image, x, y int, c baseui.CardView, select
 	for i, line := range lines {
 		g.drawText(screen, line, x+10, y+24+i*18, color.Black)
 	}
+}
+
+
+func cardTitle(c baseui.CardView) string {
+    if c.Rank != "" && c.Suit != "" {
+        return c.Suit + c.Rank
+    }
+    return c.Label
 }

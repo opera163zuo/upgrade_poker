@@ -19,6 +19,9 @@ func New() *GUI {
 func (g *GUI) Init() error {
 	ebiten.SetWindowSize(LogicalWidth*2, LogicalHeight*2)
 	ebiten.SetWindowTitle("upgrade_poker - Ebitengine GUI")
+	if err := EnsureImagesLoaded(); err != nil {
+		return err
+	}
 	return nil
 }
 

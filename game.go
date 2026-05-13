@@ -668,13 +668,13 @@ func (g *Game) UISnapshot() baseui.TableView {
 		}
 		if p.IsHuman {
 			for _, c := range p.Hand {
-				pv.HandCards = append(pv.HandCards, baseui.CardView{Label: c.String(), Suit: c.Suit.Symbol(), Rank: c.Rank.String(), FaceUp: true, Trump: IsTrump(c, g.TrumpSuit, g.DealerLevel())})
+				pv.HandCards = append(pv.HandCards, baseui.CardView{Label: c.String(), Suit: c.Suit.Symbol(), Rank: c.Rank.String(), SuitNum: int(c.Suit), RankNum: int(c.Rank), FaceUp: true, Trump: IsTrump(c, g.TrumpSuit, g.DealerLevel())})
 			}
 		}
 		if g.CurrentTrick != nil {
 			if cards, ok := g.CurrentTrick.Plays[p.Position]; ok {
 				for _, c := range cards {
-					card := baseui.CardView{Label: c.String(), Suit: c.Suit.Symbol(), Rank: c.Rank.String(), FaceUp: true, Trump: IsTrump(c, g.TrumpSuit, g.DealerLevel())}
+					card := baseui.CardView{Label: c.String(), Suit: c.Suit.Symbol(), Rank: c.Rank.String(), SuitNum: int(c.Suit), RankNum: int(c.Rank), FaceUp: true, Trump: IsTrump(c, g.TrumpSuit, g.DealerLevel())}
 					pv.PlayedCards = append(pv.PlayedCards, card)
 					view.CurrentTrick[formatPosition(p.Position)] = append(view.CurrentTrick[formatPosition(p.Position)], card)
 				}
@@ -683,7 +683,7 @@ func (g *Game) UISnapshot() baseui.TableView {
 		view.Players[i] = pv
 	}
 	for _, c := range g.BottomCards {
-		view.BottomCards = append(view.BottomCards, baseui.CardView{Label: c.String(), Suit: c.Suit.Symbol(), Rank: c.Rank.String(), FaceUp: true, Trump: IsTrump(c, g.TrumpSuit, g.DealerLevel())})
+		view.BottomCards = append(view.BottomCards, baseui.CardView{Label: c.String(), Suit: c.Suit.Symbol(), Rank: c.Rank.String(), SuitNum: int(c.Suit), RankNum: int(c.Rank), FaceUp: true, Trump: IsTrump(c, g.TrumpSuit, g.DealerLevel())})
 	}
 	return view
 }
