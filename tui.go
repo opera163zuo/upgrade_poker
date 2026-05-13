@@ -3,34 +3,16 @@ package main
 import (
 	"fmt"
 	"math/rand"
-	"time"
 	"os"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattn/go-runewidth"
+	baseui "github.com/smallnest/upgrade_poker/ui"
 )
 
-// UIPhase represents the current UI interaction phase
-type UIPhase int
-
-const (
-	UIPhaseWelcome   UIPhase = iota
-	UIPhaseDealing
-	UIPhaseBidding
-	UIPhaseDiscard
-	UIPhasePlaying
-	UIPhaseWaitTrick  // waiting for trick result display
-	UIPhaseHandResult // show hand result
-	UIPhaseGameOver
-)
-
-// UserAction represents an action from the user
-type UserAction struct {
-	Type     string // "play", "cancel", "bid", "pass", "confirm", "start"
-	CardIdx  []int  // selected card indices (for play/discard)
-	BidType  BidType
-	BidSuit  Suit
-}
+type UIPhase = baseui.UIPhase
+type UserAction = baseui.UIAction
 
 // CardRect represents a clickable card area on screen
 type CardRect struct {
@@ -52,9 +34,9 @@ type TUI struct {
 	screen     tcell.Screen
 	game       *Game
 	phase      UIPhase
-	selected   map[int]bool  // selected card indices
-	cardRects  []CardRect    // card click areas
-	buttons    []Button      // button click areas
+	selected   map[int]bool // selected card indices
+	cardRects  []CardRect   // card click areas
+	buttons    []Button     // button click areas
 	actionChan chan UserAction
 	width      int
 	height     int
@@ -85,27 +67,27 @@ type TUI struct {
 	thinkingPos PlayerPosition
 	thinking    bool
 
-		// Quit flag
-		quitting bool
+	// Quit flag
+	quitting bool
 
-		// Dealing animation
-		dealCounts [4]int
+	// Dealing animation
+	dealCounts [4]int
 
-		// Waiting for human to play
-		waitingForHuman bool
+	// Waiting for human to play
+	waitingForHuman bool
 
-		lastEscTime time.Time
+	lastEscTime time.Time
 
-		// Double-click detection
-		lastClickTime time.Time
-		lastClickX    int
-		lastClickY    int
+	// Double-click detection
+	lastClickTime time.Time
+	lastClickX    int
+	lastClickY    int
 }
 
 func NewTUI(g *Game) *TUI {
 	return &TUI{
 		game:       g,
-		phase:      UIPhaseWelcome,
+		phase:      baseui.PhaseWelcome,
 		selected:   make(map[int]bool),
 		actionChan: make(chan UserAction, 10),
 		redishReq:  make(chan struct{}),
@@ -131,16 +113,16 @@ func (t *TUI) Init() error {
 }
 
 // Close shuts down the TUI
-func (t *TUI) Close() {
+func (t *TUI) Close() error {
 	if t.screen != nil {
 		t.screen.Fini()
 	}
+	return nil
 }
 
 // Run starts the TUI event loop (runs in main goroutine)
-func (t *TUI) Run() {
-	// Start game logic in separate goroutine
-	go t.game.RunTUI(t)
+func (t *TUI) Run(loop func()) error {
+	go loop()
 
 	// Redraw notifier: game goroutine sends on redishReq, we inject an event
 	go func() {
@@ -167,16 +149,16 @@ func (t *TUI) Run() {
 		case *tcell.EventKey:
 			if ev.Key() == tcell.KeyCtrlC {
 				t.quitting = true
-				t.actionChan <- UserAction{Type: "quit"}
+				t.actionChan <- UserAction{Type: baseui.ActionQuit}
 				t.screen.Fini()
-				return
+				return nil
 			}
 			if ev.Key() == tcell.KeyEsc {
 				if !t.lastEscTime.IsZero() && time.Since(t.lastEscTime) < 2*time.Second {
 					t.quitting = true
-					t.actionChan <- UserAction{Type: "quit"}
+					t.actionChan <- UserAction{Type: baseui.ActionQuit}
 					t.screen.Fini()
-					return
+					return nil
 				}
 				t.lastEscTime = time.Now()
 			} else {
@@ -196,55 +178,55 @@ func (t *TUI) Run() {
 // handleKey processes keyboard events
 func (t *TUI) handleKey(ev *tcell.EventKey) {
 	switch t.phase {
-	case UIPhaseWelcome:
-		t.actionChan <- UserAction{Type: "start"}
-	case UIPhasePlaying:
+	case baseui.PhaseWelcome:
+		t.actionChan <- UserAction{Type: baseui.ActionStart}
+	case baseui.PhasePlaying:
 		t.handleCardNav(ev)
 		switch ev.Key() {
 		case tcell.KeyEnter:
 			t.submitSelection()
 		case tcell.KeyBackspace, tcell.KeyDelete:
 			t.selected = make(map[int]bool)
-	t.cursorIdx = 0
+			t.cursorIdx = 0
 		default:
 			switch ev.Rune() {
 			case 'p', 'P': // 出牌
 				t.submitSelection()
 			case 'c', 'C': // 取消
 				t.selected = make(map[int]bool)
-	t.cursorIdx = 0
+				t.cursorIdx = 0
 			}
 		}
-	case UIPhaseDiscard:
+	case baseui.PhaseDiscard:
 		t.handleCardNav(ev)
 		switch ev.Key() {
 		case tcell.KeyEnter:
 			t.submitSelection()
 		case tcell.KeyBackspace, tcell.KeyDelete:
 			t.selected = make(map[int]bool)
-	t.cursorIdx = 0
+			t.cursorIdx = 0
 		default:
 			switch ev.Rune() {
 			case 'd', 'D': // 扣底
 				t.submitSelection()
 			case 'c', 'C': // 取消
 				t.selected = make(map[int]bool)
-	t.cursorIdx = 0
+				t.cursorIdx = 0
 			}
 		}
-	case UIPhaseHandResult:
-		t.actionChan <- UserAction{Type: "confirm"}
-	case UIPhaseBidding:
+	case baseui.PhaseHandResult:
+		t.actionChan <- UserAction{Type: baseui.ActionConfirm}
+	case baseui.PhaseBidding:
 		switch ev.Rune() {
 		case 'b', 'B': // 亮主
 			if len(t.bidOptions) > 0 {
 				bid := t.bidOptions[0]
-				t.actionChan <- UserAction{Type: "bid", BidType: bid.Type, BidSuit: bid.Suit}
+				t.actionChan <- UserAction{Type: baseui.ActionBid, BidType: bid.Type.String(), BidSuit: bid.Suit.String()}
 			}
 		case 'p', 'P': // 不亮
-			t.actionChan <- UserAction{Type: "pass"}
+			t.actionChan <- UserAction{Type: baseui.ActionPass}
 		}
-	case UIPhaseGameOver:
+	case baseui.PhaseGameOver:
 		if ev.Key() == tcell.KeyEnter {
 			t.screen.Fini()
 			return
@@ -341,7 +323,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		// Check card clicks
 		for _, cr := range t.cardRects {
 			if x >= cr.X && x < cr.X+cr.W && y >= cr.Y && y < cr.Y+cr.H {
-				if t.phase == UIPhasePlaying {
+				if t.phase == baseui.PhasePlaying {
 					if isDoubleClick {
 						// Double-click: directly play this card
 						t.selected = map[int]bool{cr.Index: true}
@@ -354,7 +336,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 							t.selected[cr.Index] = true
 						}
 					}
-				} else if t.phase == UIPhaseDiscard {
+				} else if t.phase == baseui.PhaseDiscard {
 					t.cursorIdx = cr.Index
 					if t.selected[cr.Index] {
 						delete(t.selected, cr.Index)
@@ -391,19 +373,19 @@ func (t *TUI) handleButton(action string) {
 		t.submitSelection()
 	case "cancel":
 		t.selected = make(map[int]bool)
-	t.cursorIdx = 0
+		t.cursorIdx = 0
 	case "bid":
 		// Find the best bid option
 		if len(t.bidOptions) > 0 {
 			bid := t.bidOptions[0]
-			t.actionChan <- UserAction{Type: "bid", BidType: bid.Type, BidSuit: bid.Suit}
+			t.actionChan <- UserAction{Type: baseui.ActionBid, BidType: bid.Type.String(), BidSuit: bid.Suit.String()}
 		}
 	case "pass":
-		t.actionChan <- UserAction{Type: "pass"}
+		t.actionChan <- UserAction{Type: baseui.ActionPass}
 	case "confirm":
-		t.actionChan <- UserAction{Type: "confirm"}
+		t.actionChan <- UserAction{Type: baseui.ActionConfirm}
 	case "start":
-		t.actionChan <- UserAction{Type: "start"}
+		t.actionChan <- UserAction{Type: baseui.ActionStart}
 	}
 }
 
@@ -413,13 +395,13 @@ func (t *TUI) submitSelection() {
 		return
 	}
 
-	if t.phase == UIPhasePlaying {
+	if t.phase == baseui.PhasePlaying {
 		indices := make([]int, 0, len(t.selected))
 		for idx := range t.selected {
 			indices = append(indices, idx)
 		}
-		t.actionChan <- UserAction{Type: "play", CardIdx: indices}
-	} else if t.phase == UIPhaseDiscard {
+		t.actionChan <- UserAction{Type: baseui.ActionPlay, CardIdx: indices}
+	} else if t.phase == baseui.PhaseDiscard {
 		if len(t.selected) != t.discardCount {
 			return
 		}
@@ -427,14 +409,14 @@ func (t *TUI) submitSelection() {
 		for idx := range t.selected {
 			indices = append(indices, idx)
 		}
-		t.actionChan <- UserAction{Type: "play", CardIdx: indices}
+		t.actionChan <- UserAction{Type: baseui.ActionPlay, CardIdx: indices}
 	}
 }
 
 // WaitForAction blocks until the user performs an action
 func (t *TUI) WaitForAction() UserAction {
 	action := <-t.actionChan
-	if action.Type == "quit" {
+	if action.Type == baseui.ActionQuit {
 		t.screen.Fini()
 		os.Exit(0)
 	}
@@ -448,13 +430,13 @@ func (t *TUI) WaitForActionOrTimeout(timeout time.Duration) (UserAction, bool) {
 	defer timer.Stop()
 	select {
 	case action := <-t.actionChan:
-		if action.Type == "quit" {
+		if action.Type == baseui.ActionQuit {
 			t.screen.Fini()
 			os.Exit(0)
 		}
 		return action, false
 	case <-timer.C:
-		return UserAction{Type: "timeout"}, true
+		return UserAction{Type: baseui.ActionTimeout}, true
 	}
 }
 
@@ -470,9 +452,47 @@ func (t *TUI) SetPhase(phase UIPhase) {
 }
 
 // SetMessage displays a message with optional buttons
-func (t *TUI) SetMessage(msg string, buttons []Button) {
+func (t *TUI) ShowMessage(msg string, buttons []baseui.ButtonSpec) {
 	t.message = msg
-	t.msgButtons = buttons
+	t.msgButtons = nil
+	for _, b := range buttons {
+		t.msgButtons = append(t.msgButtons, Button{Label: b.Label, Action: b.ID})
+	}
+}
+
+func (t *TUI) ClearMessage() {
+	t.message = ""
+	t.msgButtons = nil
+}
+
+func (t *TUI) Render(view baseui.TableView) {
+	t.phase = view.Phase
+	t.thinking = false
+	t.message = view.Message
+	t.msgButtons = nil
+	for _, b := range view.Buttons {
+		t.msgButtons = append(t.msgButtons, Button{Label: b.Label, Action: b.ID})
+	}
+	t.discardCount = view.DiscardCount
+	t.waitingForHuman = view.WaitingForHuman
+	t.dealCounts = view.DealCounts
+	t.trickWinner = parsePlayerPosition(view.TrickWinner)
+	t.trickPoints = view.TrickPoints
+	t.selected = map[int]bool{}
+	for k, v := range view.SelectedIdx {
+		t.selected[k] = v
+	}
+	for idx, pv := range view.Players {
+		if pv.IsThinking {
+			t.thinking = true
+			t.thinkingPos = PlayerPosition(idx)
+			break
+		}
+	}
+	select {
+	case t.redishReq <- struct{}{}:
+	default:
+	}
 }
 
 // ============ Drawing Functions ============
@@ -585,25 +605,24 @@ func (t *TUI) drawNorthPlayer() {
 	}
 	t.drawString(cx-len(label)/2, 2, label, style)
 
-
-		// Dealing animation: show card backs
-		if t.phase == UIPhaseDealing {
-			count := t.dealCounts[PositionNorth]
-			maxShow := 7
-			if count > maxShow {
-				count = maxShow
-			}
-			startX := cx - count*3
-			for k := 0; k < count; k++ {
-				t.drawCardBack(startX+k*6, 4)
-			}
-			return
+	// Dealing animation: show card backs
+	if t.phase == baseui.PhaseDealing {
+		count := t.dealCounts[PositionNorth]
+		maxShow := 7
+		if count > maxShow {
+			count = maxShow
 		}
-		// Thinking animation
-		if t.thinking && t.thinkingPos == PositionNorth {
-			t.drawString(cx-6, 4, "思考中...", tcell.StyleDefault.Foreground(tcell.ColorYellow))
-			return
+		startX := cx - count*3
+		for k := 0; k < count; k++ {
+			t.drawCardBack(startX+k*6, 4)
 		}
+		return
+	}
+	// Thinking animation
+	if t.thinking && t.thinkingPos == PositionNorth {
+		t.drawString(cx-6, 4, "思考中...", tcell.StyleDefault.Foreground(tcell.ColorYellow))
+		return
+	}
 
 	// If this player played cards in current trick, show them
 	if g.CurrentTrick != nil {
@@ -626,18 +645,18 @@ func (t *TUI) drawWestPlayer() {
 	}
 	t.drawString(x, t.height/2-2, label, style)
 
-		// Dealing animation: show card backs
-		if t.phase == UIPhaseDealing {
-			count := t.dealCounts[PositionWest]
-			maxShow := 5
-			if count > maxShow {
-				count = maxShow
-			}
-			for k := 0; k < count; k++ {
-				t.drawCardBack(x, t.height/2-k)
-			}
-			return
+	// Dealing animation: show card backs
+	if t.phase == baseui.PhaseDealing {
+		count := t.dealCounts[PositionWest]
+		maxShow := 5
+		if count > maxShow {
+			count = maxShow
 		}
+		for k := 0; k < count; k++ {
+			t.drawCardBack(x, t.height/2-k)
+		}
+		return
+	}
 	// Thinking animation
 	if t.thinking && t.thinkingPos == PositionWest {
 		t.drawString(x, t.height/2, "思考中...", tcell.StyleDefault.Foreground(tcell.ColorYellow))
@@ -665,18 +684,18 @@ func (t *TUI) drawEastPlayer() {
 	}
 	t.drawString(x, t.height/2-2, label, style)
 
-		// Dealing animation: show card backs
-		if t.phase == UIPhaseDealing {
-			count := t.dealCounts[PositionEast]
-			maxShow := 5
-			if count > maxShow {
-				count = maxShow
-			}
-			for k := 0; k < count; k++ {
-				t.drawCardBack(x, t.height/2-k)
-			}
-			return
+	// Dealing animation: show card backs
+	if t.phase == baseui.PhaseDealing {
+		count := t.dealCounts[PositionEast]
+		maxShow := 5
+		if count > maxShow {
+			count = maxShow
 		}
+		for k := 0; k < count; k++ {
+			t.drawCardBack(x, t.height/2-k)
+		}
+		return
+	}
 	// Thinking animation
 	if t.thinking && t.thinkingPos == PositionEast {
 		t.drawString(x, t.height/2, "思考中...", tcell.StyleDefault.Foreground(tcell.ColorYellow))
@@ -704,53 +723,53 @@ func (t *TUI) drawTrickArea() {
 		t.drawCardsRow(cx-len(cards)*4/2, t.height-12, cards, false)
 	}
 
-		// Show winner info in double-line box in center
-		if t.phase == UIPhaseWaitTrick {
-			winnerText := fmt.Sprintf("%s 赢得此轮", formatPosition(t.trickWinner))
-			pointsText := fmt.Sprintf("获得 %d 分", t.trickPoints)
-			cx := t.width / 2
-			cy := t.height / 2
+	// Show winner info in double-line box in center
+	if t.phase == baseui.PhaseWaitTrick {
+		winnerText := fmt.Sprintf("%s 赢得此轮", formatPosition(t.trickWinner))
+		pointsText := fmt.Sprintf("获得 %d 分", t.trickPoints)
+		cx := t.width / 2
+		cy := t.height / 2
 
-			ww := runewidth.StringWidth(winnerText)
-			pw := runewidth.StringWidth(pointsText)
-			maxW := ww
-			if pw > maxW {
-				maxW = pw
-			}
-			boxW := maxW + 8
-			boxH := 5
-			boxX := cx - boxW/2
-			boxY := cy - boxH/2
-
-			bg := tcell.NewRGBColor(20, 40, 20)
-			bgStyle := tcell.StyleDefault.Background(bg)
-			for by := boxY; by < boxY+boxH; by++ {
-				for bx := boxX; bx < boxX+boxW; bx++ {
-					t.screen.SetContent(bx, by, ' ', nil, bgStyle)
-				}
-			}
-
-			bs := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true).Background(bg)
-			t.screen.SetContent(boxX, boxY, '\u2554', nil, bs)
-			for bx := boxX + 1; bx < boxX+boxW-1; bx++ {
-				t.screen.SetContent(bx, boxY, '\u2550', nil, bs)
-			}
-			t.screen.SetContent(boxX+boxW-1, boxY, '\u2557', nil, bs)
-			for by := boxY + 1; by < boxY+boxH-1; by++ {
-				t.screen.SetContent(boxX, by, '\u2551', nil, bs)
-				t.screen.SetContent(boxX+boxW-1, by, '\u2551', nil, bs)
-			}
-			t.screen.SetContent(boxX, boxY+boxH-1, '\u255a', nil, bs)
-			for bx := boxX + 1; bx < boxX+boxW-1; bx++ {
-				t.screen.SetContent(bx, boxY+boxH-1, '\u2550', nil, bs)
-			}
-			t.screen.SetContent(boxX+boxW-1, boxY+boxH-1, '\u255d', nil, bs)
-
-			ws := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true).Background(bg)
-			ps := tcell.StyleDefault.Foreground(tcell.ColorGreen).Bold(true).Background(bg)
-			t.drawStringW(winnerText, cx-ww/2, cy-1, ws)
-			t.drawStringW(pointsText, cx-pw/2, cy+1, ps)
+		ww := runewidth.StringWidth(winnerText)
+		pw := runewidth.StringWidth(pointsText)
+		maxW := ww
+		if pw > maxW {
+			maxW = pw
 		}
+		boxW := maxW + 8
+		boxH := 5
+		boxX := cx - boxW/2
+		boxY := cy - boxH/2
+
+		bg := tcell.NewRGBColor(20, 40, 20)
+		bgStyle := tcell.StyleDefault.Background(bg)
+		for by := boxY; by < boxY+boxH; by++ {
+			for bx := boxX; bx < boxX+boxW; bx++ {
+				t.screen.SetContent(bx, by, ' ', nil, bgStyle)
+			}
+		}
+
+		bs := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true).Background(bg)
+		t.screen.SetContent(boxX, boxY, '\u2554', nil, bs)
+		for bx := boxX + 1; bx < boxX+boxW-1; bx++ {
+			t.screen.SetContent(bx, boxY, '\u2550', nil, bs)
+		}
+		t.screen.SetContent(boxX+boxW-1, boxY, '\u2557', nil, bs)
+		for by := boxY + 1; by < boxY+boxH-1; by++ {
+			t.screen.SetContent(boxX, by, '\u2551', nil, bs)
+			t.screen.SetContent(boxX+boxW-1, by, '\u2551', nil, bs)
+		}
+		t.screen.SetContent(boxX, boxY+boxH-1, '\u255a', nil, bs)
+		for bx := boxX + 1; bx < boxX+boxW-1; bx++ {
+			t.screen.SetContent(bx, boxY+boxH-1, '\u2550', nil, bs)
+		}
+		t.screen.SetContent(boxX+boxW-1, boxY+boxH-1, '\u255d', nil, bs)
+
+		ws := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true).Background(bg)
+		ps := tcell.StyleDefault.Foreground(tcell.ColorGreen).Bold(true).Background(bg)
+		t.drawStringW(winnerText, cx-ww/2, cy-1, ws)
+		t.drawStringW(pointsText, cx-pw/2, cy+1, ps)
+	}
 }
 
 // drawSouthHand draws the human player's hand at the bottom
@@ -758,11 +777,11 @@ func (t *TUI) drawSouthHand() {
 	g := t.game
 	player := g.Players[PositionSouth]
 	if len(player.Hand) == 0 {
-			return
-		}
+		return
+	}
 
 	// Dealing animation: show dealt cards so far
-	if t.phase == UIPhaseDealing {
+	if t.phase == baseui.PhaseDealing {
 		count := t.dealCounts[PositionSouth]
 		if count == 0 {
 			return
@@ -788,8 +807,8 @@ func (t *TUI) drawSouthHand() {
 			if x+cardW > t.width-2 {
 				break
 			}
-				card := player.Hand[k]
-				t.drawCard(x, handY, card, false, false, false)
+			card := player.Hand[k]
+			t.drawCard(x, handY, card, false, false, false)
 		}
 		return
 	}
@@ -818,40 +837,40 @@ func (t *TUI) drawSouthHand() {
 	}
 	handY := t.height - numRows*(cardH+1) - 3
 	if handY < t.height/2+2 {
-		handY = t.height / 2 + 2
+		handY = t.height/2 + 2
 	}
 
 	// Label
 	label := "南(你)"
 	t.drawString(t.width/2-runewidth.StringWidth(label)/2, handY-2, label, tcell.StyleDefault.Bold(true))
 
-		// Show waiting indicator when it's human's turn
-		if t.waitingForHuman {
-			waitText := "等你出牌..."
-			t.drawString(t.width/2-runewidth.StringWidth(waitText)/2, handY-4, waitText, tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true))
-		}
+	// Show waiting indicator when it's human's turn
+	if t.waitingForHuman {
+		waitText := "等你出牌..."
+		t.drawString(t.width/2-runewidth.StringWidth(waitText)/2, handY-4, waitText, tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true))
+	}
 
-		// Build draw order: trump first, then other suits
-		drawOrder := make([]Card, 0, len(player.Hand))
-		// Always put trump group first (works for both normal and no-trump)
-		if cards, ok := groups[g.TrumpSuit]; ok {
+	// Build draw order: trump first, then other suits
+	drawOrder := make([]Card, 0, len(player.Hand))
+	// Always put trump group first (works for both normal and no-trump)
+	if cards, ok := groups[g.TrumpSuit]; ok {
+		drawOrder = append(drawOrder, cards...)
+	}
+	suitOrder := []Suit{SuitSpade, SuitHeart, SuitDiamond, SuitClub}
+	for _, suit := range suitOrder {
+		if suit == g.TrumpSuit {
+			continue
+		}
+		if cards, ok := groups[suit]; ok {
 			drawOrder = append(drawOrder, cards...)
 		}
-		suitOrder := []Suit{SuitSpade, SuitHeart, SuitDiamond, SuitClub}
-		for _, suit := range suitOrder {
-			if suit == g.TrumpSuit {
-				continue
-			}
-			if cards, ok := groups[suit]; ok {
-				drawOrder = append(drawOrder, cards...)
-			}
+	}
+	// For non-no-trump, pick up any cards grouped under SuitJoker
+	if g.TrumpSuit != SuitJoker {
+		if cards, ok := groups[SuitJoker]; ok {
+			drawOrder = append(drawOrder, cards...)
 		}
-		// For non-no-trump, pick up any cards grouped under SuitJoker
-		if g.TrumpSuit != SuitJoker {
-			if cards, ok := groups[SuitJoker]; ok {
-				drawOrder = append(drawOrder, cards...)
-			}
-		}
+	}
 
 	// Draw cards
 	for idx, c := range drawOrder {
@@ -864,8 +883,8 @@ func (t *TUI) drawSouthHand() {
 			y -= 2 // lift selected card up 2 rows for visibility
 		}
 		isTrump := IsTrump(c, g.TrumpSuit, level)
-		isCursor := (idx == t.cursorIdx) && (t.phase == UIPhasePlaying || t.phase == UIPhaseDiscard)
-			t.drawCard(x, y, c, t.selected[idx], isTrump, isCursor)
+		isCursor := (idx == t.cursorIdx) && (t.phase == baseui.PhasePlaying || t.phase == baseui.PhaseDiscard)
+		t.drawCard(x, y, c, t.selected[idx], isTrump, isCursor)
 		// Draw selection marker above selected cards
 		if t.selected[idx] {
 			markerStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true)
@@ -972,14 +991,14 @@ func (t *TUI) drawActionButtons() {
 	y := t.height - 1
 
 	switch t.phase {
-	case UIPhaseWelcome:
+	case baseui.PhaseWelcome:
 		t.addButton("[Enter:开始游戏]", "start", t.width/2-5, y)
-	case UIPhaseBidding:
+	case baseui.PhaseBidding:
 		hint := "按B亮主/P不亮，或点击按钮"
 		t.drawString(t.width/2-len(hint)/2, y-1, hint, tcell.StyleDefault.Foreground(tcell.ColorGreen))
 		t.addButton("[B:亮主]", "bid", t.width/2-8, y)
 		t.addButton("[P:不亮]", "pass", t.width/2+2, y)
-	case UIPhasePlaying:
+	case baseui.PhasePlaying:
 		needCount := 1
 		if t.game.CurrentTrick != nil && t.game.CurrentTrick.PlayerCount() > 0 {
 			needCount = len(t.game.CurrentTrick.LeadCards())
@@ -990,18 +1009,18 @@ func (t *TUI) drawActionButtons() {
 		t.drawString(t.width/2-len(hint)/2, y-1, hint, hintStyle)
 		t.addButton("[Enter/P:出牌]", "play", t.width/2-14, y)
 		t.addButton("[C:取消]", "cancel", t.width/2+4, y)
-	case UIPhaseDiscard:
+	case baseui.PhaseDiscard:
 		selectedCount := len(t.selected)
 		hintStyle := tcell.StyleDefault.Foreground(tcell.ColorGreen).Bold(true)
 		hint := fmt.Sprintf("点击牌选中(已选%d张/需扣%d张) D:扣底 C:取消", selectedCount, t.discardCount)
 		t.drawString(t.width/2-len(hint)/2, y-1, hint, hintStyle)
 		t.addButton("[Enter/D:扣底]", "play", t.width/2-14, y)
 		t.addButton("[C:取消]", "cancel", t.width/2+6, y)
-		case UIPhaseWaitTrick:
-			// Result shown in center box, bottom bar empty
-		case UIPhaseHandResult:
-			t.drawString(t.width/2-12, y, "5秒后自动开始下一局(按键跳过)", tcell.StyleDefault.Foreground(tcell.ColorYellow))
-	case UIPhaseGameOver:
+	case baseui.PhaseWaitTrick:
+		// Result shown in center box, bottom bar empty
+	case baseui.PhaseHandResult:
+		t.drawString(t.width/2-12, y, "5秒后自动开始下一局(按键跳过)", tcell.StyleDefault.Foreground(tcell.ColorYellow))
+	case baseui.PhaseGameOver:
 		t.drawString(t.width/2-4, y, "游戏结束!", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorYellow))
 	}
 }
@@ -1138,4 +1157,19 @@ func splitLines(s string) []string {
 		lines = append(lines, s[start:])
 	}
 	return lines
+}
+
+func parsePlayerPosition(label string) PlayerPosition {
+	switch label {
+	case "南", "南(你)":
+		return PositionSouth
+	case "西", "西(AI)":
+		return PositionWest
+	case "北", "北(AI)":
+		return PositionNorth
+	case "东", "东(AI)":
+		return PositionEast
+	default:
+		return PositionSouth
+	}
 }

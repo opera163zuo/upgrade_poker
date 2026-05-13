@@ -14,7 +14,7 @@ func TestNewDeck(t *testing.T) {
 }
 
 func TestDeal(t *testing.T) {
-	g := NewGame()
+	g := NewGame(nil)
 	g.Deal()
 
 	totalCards := 0
