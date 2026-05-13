@@ -16,6 +16,8 @@ build-linux:
 		-o $(RELEASE_DIR)/upgrade_$(VERSION)_linux64 .
 
 build-mac:
+	# macOS需要Xcode SDK才能编译Ebitengine（CGo限制）
+	# 仅在macOS机器上执行，交叉编译从Linux会失败
 	GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$(VERSION)" \
 		-o $(RELEASE_DIR)/upgrade_$(VERSION)_mac64 .
 

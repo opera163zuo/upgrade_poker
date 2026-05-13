@@ -1,7 +1,5 @@
 package main
 
-var Version = "dev"
-
 import (
 	"flag"
 	"fmt"
@@ -11,14 +9,15 @@ import (
 	tuipkg "github.com/smallnest/upgrade_poker/ui/tui"
 )
 
+var Version = "dev"
+
 func main() {
 	showVersion := flag.Bool("version", false, "show version")
 	uiMode := flag.String("ui", "tui", "ui mode: tui or gui")
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("upgrade_poker %s
-", Version)
+		fmt.Printf("upgrade_poker %s\n", Version)
 		os.Exit(0)
 	}
 
