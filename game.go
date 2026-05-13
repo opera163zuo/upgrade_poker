@@ -636,6 +636,35 @@ func (g *Game) render() {
 	g.ui.Render(g.UISnapshot())
 }
 
+func (g *Game) BuildDrawOrder(pos PlayerPosition) []Card {
+	player := g.Players[pos]
+	if player == nil {
+		return nil
+	}
+	level := g.DealerLevel()
+	player.SortHand(g.TrumpSuit, level)
+	groups := GroupBySuit(player.Hand, g.TrumpSuit, level)
+
+	drawOrder := make([]Card, 0, len(player.Hand))
+	if cards, ok := groups[g.TrumpSuit]; ok {
+		drawOrder = append(drawOrder, cards...)
+	}
+	for _, suit := range []Suit{SuitSpade, SuitHeart, SuitDiamond, SuitClub} {
+		if suit == g.TrumpSuit {
+			continue
+		}
+		if cards, ok := groups[suit]; ok {
+			drawOrder = append(drawOrder, cards...)
+		}
+	}
+	if g.TrumpSuit != SuitJoker {
+		if cards, ok := groups[SuitJoker]; ok {
+			drawOrder = append(drawOrder, cards...)
+		}
+	}
+	return drawOrder
+}
+
 func (g *Game) UISnapshot() baseui.TableView {
 	view := baseui.TableView{
 		Phase:           g.uiPhase,
@@ -672,7 +701,11 @@ func (g *Game) UISnapshot() baseui.TableView {
 			IsThinking: g.uiThinking && p.Position == g.uiThinkingPos,
 		}
 		if p.IsHuman {
-			for _, c := range p.Hand {
+			drawOrder := g.BuildDrawOrder(p.Position)
+			if p.Position == PositionSouth {
+				g.drawOrder = append(g.drawOrder[:0], drawOrder...)
+			}
+			for _, c := range drawOrder {
 				pv.HandCards = append(pv.HandCards, baseui.CardView{Label: c.String(), Suit: c.Suit.Symbol(), Rank: c.Rank.String(), SuitNum: int(c.Suit), RankNum: int(c.Rank), FaceUp: true, Trump: IsTrump(c, g.TrumpSuit, g.DealerLevel())})
 			}
 		}

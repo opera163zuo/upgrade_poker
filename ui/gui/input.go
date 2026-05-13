@@ -26,6 +26,7 @@ func (g *GUI) updateInput() {
 	buttonRects := append([]buttonRect(nil), g.st.buttonRects...)
 	cardRects := append([]rect(nil), g.st.cardRects...)
 	phase := g.st.view.Phase
+	waitingForHuman := g.st.view.WaitingForHuman
 	g.st.mu.RUnlock()
 
 	for _, b := range buttonRects {
@@ -49,6 +50,9 @@ func (g *GUI) updateInput() {
 		return
 	}
 	if phase != baseui.PhasePlaying && phase != baseui.PhaseDiscard {
+		return
+	}
+	if phase == baseui.PhasePlaying && !waitingForHuman {
 		return
 	}
 	for idx := len(cardRects) - 1; idx >= 0; idx-- {
@@ -75,7 +79,7 @@ func (g *GUI) handleKeyboard() {
 		g.st.mu.Unlock()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-		g.submitSelection()
+		g.submitSelectionOrConfirm()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
 		g.quickBid()
@@ -113,20 +117,30 @@ func (g *GUI) submitFixedAction(actionType baseui.ActionType) {
 	}
 }
 
-func (g *GUI) submitSelection() {
+func (g *GUI) submitSelectionOrConfirm() {
 	g.st.mu.RLock()
 	phase := g.st.view.Phase
+	waitingForHuman := g.st.view.WaitingForHuman
+	buttons := append([]buttonRect(nil), g.st.buttonRects...)
 	g.st.mu.RUnlock()
 	indices := g.selectedIndices()
-	if len(indices) == 0 {
+	if len(indices) > 0 {
+		switch phase {
+		case baseui.PhasePlaying:
+			if waitingForHuman {
+				g.st.actionCh <- baseui.UIAction{Type: baseui.ActionPlay, CardIdx: indices}
+			}
+		case baseui.PhaseDiscard:
+			if len(indices) == g.discardCount() {
+				g.st.actionCh <- baseui.UIAction{Type: baseui.ActionPlay, CardIdx: indices}
+			}
+		}
 		return
 	}
-	switch phase {
-	case baseui.PhasePlaying:
-		g.st.actionCh <- baseui.UIAction{Type: baseui.ActionPlay, CardIdx: indices}
-	case baseui.PhaseDiscard:
-		if len(indices) == g.discardCount() {
-			g.st.actionCh <- baseui.UIAction{Type: baseui.ActionPlay, CardIdx: indices}
+	for _, b := range buttons {
+		if b.enabled && b.action.Type == baseui.ActionConfirm {
+			g.st.actionCh <- b.action
+			return
 		}
 	}
 }
