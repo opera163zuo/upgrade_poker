@@ -315,3 +315,57 @@ func TestValidateFollowingPair(t *testing.T) {
 		t.Fatal("expected following pair to be a valid play")
 	}
 }
+
+func TestCanBidIncludesSingleLevel(t *testing.T) {
+	player := NewPlayer(PositionWest, false)
+	player.Hand = []Card{
+		{Suit: SuitHeart, Rank: Rank5},
+		{Suit: SuitSpade, Rank: Rank9},
+	}
+
+	bids := CanBid(player, Rank5)
+	if len(bids) == 0 {
+		t.Fatal("expected a single-level bid to be available")
+	}
+	found := false
+	for _, bid := range bids {
+		if bid.Type == BidSingleLevel && bid.Suit == SuitHeart {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected heart single-level bid, got %#v", bids)
+	}
+}
+
+func TestRunBiddingPhaseSetsDealerAndTrumpFromAIBid(t *testing.T) {
+	g := &Game{Level: [2]Rank{Rank5, Rank5}}
+	g.Players[PositionSouth] = NewPlayer(PositionSouth, false)
+	g.Players[PositionWest] = NewPlayer(PositionWest, false)
+	g.Players[PositionNorth] = NewPlayer(PositionNorth, false)
+	g.Players[PositionEast] = NewPlayer(PositionEast, false)
+	g.Dealer = PositionSouth
+	g.TrumpSuit = SuitJoker
+
+	g.Players[PositionSouth].Hand = []Card{{Suit: SuitClub, Rank: Rank9}}
+	g.Players[PositionWest].Hand = []Card{{Suit: SuitHeart, Rank: Rank5}}
+	g.Players[PositionNorth].Hand = []Card{{Suit: SuitSpade, Rank: Rank8}}
+	g.Players[PositionEast].Hand = []Card{{Suit: SuitDiamond, Rank: Rank7}}
+
+	if restarted := g.RunBiddingPhase(); restarted {
+		t.Fatal("unexpected restart during bidding")
+	}
+	if g.CurrentBid == nil {
+		t.Fatal("expected AI to make a bid with a single level card")
+	}
+	if g.CurrentBid.Type != BidSingleLevel {
+		t.Fatalf("expected single-level bid, got %v", g.CurrentBid.Type)
+	}
+	if g.TrumpSuit != SuitHeart {
+		t.Fatalf("expected trump suit heart, got %v", g.TrumpSuit)
+	}
+	if g.Dealer != PositionWest {
+		t.Fatalf("expected dealer west, got %v", g.Dealer)
+	}
+}

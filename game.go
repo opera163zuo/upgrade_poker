@@ -115,6 +115,16 @@ func (g *Game) waitActionOrTimeout(d time.Duration) (baseui.UIAction, bool, bool
 	return action, timedOut, false
 }
 
+func (g *Game) applyBid(bid *Bid) {
+	if bid == nil {
+		return
+	}
+	b := *bid
+	g.CurrentBid = &b
+	g.TrumpSuit = GetTrumpSuit(&b)
+	g.Dealer = b.Player
+}
+
 func (g *Game) Deal() {
 	g.Deck = NewDeck()
 	ShuffleDeck(g.Deck, g.rng)
@@ -149,6 +159,7 @@ func (g *Game) DealAnimated() bool {
 	g.render()
 	g.setPhase(baseui.PhaseDealing)
 	g.CurrentBid = nil
+	g.TrumpSuit = SuitJoker
 
 	level := g.DealerLevel()
 	humanAsked := false
@@ -186,7 +197,7 @@ func (g *Game) DealAnimated() bool {
 						if bid := g.matchBidAction(validBids, action); bid != nil {
 							b := *bid
 							b.Player = PositionSouth
-							g.CurrentBid = &b
+							g.applyBid(&b)
 							humanAsked = true
 							break
 						}
@@ -217,7 +228,7 @@ func (g *Game) DealAnimated() bool {
 				return vb
 			}())
 			if bid != nil {
-				g.CurrentBid = bid
+				g.applyBid(bid)
 			}
 		}
 	}
@@ -263,7 +274,8 @@ func (g *Game) RunBiddingPhase() bool {
 				if action.Type == baseui.ActionBid {
 					if bid := g.matchBidAction(validBids, action); bid != nil {
 						b := *bid
-						g.CurrentBid = &b
+						b.Player = player.Position
+						g.applyBid(&b)
 						break
 					}
 				} else if action.Type == baseui.ActionPass {
@@ -275,15 +287,17 @@ func (g *Game) RunBiddingPhase() bool {
 			// AI bidding logic
 			bid := g.aiBidSimple(player, validBids)
 			if bid != nil {
-				g.CurrentBid = bid
+				g.applyBid(bid)
 			}
 		}
 	}
 
 	if g.CurrentBid != nil {
 		g.Dealer = g.CurrentBid.Player
+		g.TrumpSuit = GetTrumpSuit(g.CurrentBid)
+	} else {
+		g.TrumpSuit = SuitJoker
 	}
-	g.TrumpSuit = GetTrumpSuit(g.CurrentBid)
 
 	for _, p := range g.Players {
 		p.SortHand(g.TrumpSuit, level)
@@ -304,10 +318,12 @@ func (g *Game) aiBidSimple(player *Player, validBids []Bid) *Bid {
 	}
 	for _, bid := range validBids {
 		if bid.Type == BidPairLevel {
-			suitCount := player.CountSuit(bid.Suit, bid.Suit, g.DealerLevel())
-			if suitCount >= 4 {
-				return &bid
-			}
+			return &bid
+		}
+	}
+	for _, bid := range validBids {
+		if bid.Type == BidSingleLevel {
+			return &bid
 		}
 	}
 	return nil
@@ -651,6 +667,17 @@ func (g *Game) Run() {
 			if g.RunBiddingPhase() {
 				restarted = true
 				break
+			}
+
+			if g.CurrentBid == nil {
+				g.showMessage("无人亮主，重新发牌", nil)
+				_, _, restartedWait := g.waitActionOrTimeout(1500 * time.Millisecond)
+				if restartedWait {
+					restarted = true
+					break
+				}
+				g.showMessage("", nil)
+				continue
 			}
 
 			g.setPhase(baseui.PhaseDiscard)

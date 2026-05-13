@@ -6,16 +6,19 @@ import "fmt"
 type BidType int
 
 const (
-	BidNone       BidType = iota // No bid
-	BidPairLevel                 // 对级牌 (pair of level rank)
-	BidTripleLevel               // 三张级牌 (three of level rank)
-	BidPairJoker                 // 对王 (pair of jokers, no trump)
+	BidNone        BidType = iota // No bid
+	BidSingleLevel                // 单张级牌 (single level rank)
+	BidPairLevel                  // 对级牌 (pair of level rank)
+	BidTripleLevel                // 三张级牌 (three of level rank)
+	BidPairJoker                  // 对王 (pair of jokers, no trump)
 )
 
 func (b BidType) String() string {
 	switch b {
 	case BidNone:
 		return "无"
+	case BidSingleLevel:
+		return "单张级牌"
 	case BidPairLevel:
 		return "对级牌"
 	case BidTripleLevel:
@@ -30,7 +33,7 @@ func (b BidType) String() string {
 // Bid represents a bid made by a player
 type Bid struct {
 	Type     BidType
-	Suit     Suit      // The suit being declared as trump (meaningless for BidPairJoker)
+	Suit     Suit // The suit being declared as trump (meaningless for BidPairJoker)
 	Player   PlayerPosition
 	Priority int // Higher priority overrides lower
 }
@@ -38,12 +41,14 @@ type Bid struct {
 // BidPriority returns the priority of a bid type
 func BidPriority(bidType BidType) int {
 	switch bidType {
-	case BidPairLevel:
+	case BidSingleLevel:
 		return 1
-	case BidTripleLevel:
+	case BidPairLevel:
 		return 2
-	case BidPairJoker:
+	case BidTripleLevel:
 		return 3
+	case BidPairJoker:
+		return 4
 	default:
 		return 0
 	}
@@ -53,15 +58,24 @@ func BidPriority(bidType BidType) int {
 func CanBid(player *Player, level Rank) []Bid {
 	var bids []Bid
 
-	// Check for pair of level rank cards
-	suitPairCount := make(map[Suit]int) // count of level-rank cards per suit
+	// Check level-rank cards per suit. A single level card can establish trump,
+	// while pairs/triples can override weaker bids.
+	suitLevelCount := make(map[Suit]int)
 	for _, c := range player.Hand {
 		if c.Rank == level {
-			suitPairCount[c.Suit]++
+			suitLevelCount[c.Suit]++
 		}
 	}
 
-	for suit, count := range suitPairCount {
+	for suit, count := range suitLevelCount {
+		if count >= 1 {
+			bids = append(bids, Bid{
+				Type:     BidSingleLevel,
+				Suit:     suit,
+				Player:   player.Position,
+				Priority: BidPriority(BidSingleLevel),
+			})
+		}
 		if count >= 2 {
 			bids = append(bids, Bid{
 				Type:     BidPairLevel,
@@ -113,8 +127,8 @@ func CanOverrideBid(newBid, currentBid Bid) bool {
 // BidPhase handles the bidding phase of the game
 // Returns the winning bid (or nil if no one bid)
 type BidPhase struct {
-	players   [4]*Player
-	level     Rank
+	players    [4]*Player
+	level      Rank
 	currentBid *Bid
 	bidHistory []Bid
 }
@@ -191,43 +205,38 @@ func (bp *BidPhase) humanBid(player *Player, validBids []Bid) {
 }
 
 func (bp *BidPhase) aiBid(player *Player, validBids []Bid) {
-	// AI strategy: bid if hand is strong in that suit
-	// Simple: bid the highest priority available if the suit has enough cards
 	for _, bid := range validBids {
 		if bid.Type == BidPairJoker {
-			// Always bid no trump with pair of jokers
 			bp.currentBid = &bid
 			bp.bidHistory = append(bp.bidHistory, bid)
 			fmt.Printf("%s 亮主：对王(无主)\n", formatPosition(player.Position))
 			return
 		}
 	}
-
-	// For pair/triple of level rank, bid if we have enough cards in that suit
 	for _, bid := range validBids {
 		if bid.Type == BidTripleLevel {
-			// Triple is strong, always bid
 			bp.currentBid = &bid
 			bp.bidHistory = append(bp.bidHistory, bid)
 			fmt.Printf("%s 亮主：%s %s\n", formatPosition(player.Position), bid.Type.String(), bid.Suit.String())
 			return
 		}
 	}
-
-	// For pair, bid if we have 4+ cards of that suit
 	for _, bid := range validBids {
 		if bid.Type == BidPairLevel {
-			suitCount := player.CountSuit(bid.Suit, bid.Suit, bp.level)
-			if suitCount >= 4 {
-				bp.currentBid = &bid
-				bp.bidHistory = append(bp.bidHistory, bid)
-				fmt.Printf("%s 亮主：%s %s\n", formatPosition(player.Position), bid.Type.String(), bid.Suit.String())
-				return
-			}
+			bp.currentBid = &bid
+			bp.bidHistory = append(bp.bidHistory, bid)
+			fmt.Printf("%s 亮主：%s %s\n", formatPosition(player.Position), bid.Type.String(), bid.Suit.String())
+			return
 		}
 	}
-
-	// No bid
+	for _, bid := range validBids {
+		if bid.Type == BidSingleLevel {
+			bp.currentBid = &bid
+			bp.bidHistory = append(bp.bidHistory, bid)
+			fmt.Printf("%s 亮主：%s %s\n", formatPosition(player.Position), bid.Type.String(), bid.Suit.String())
+			return
+		}
+	}
 }
 
 // GetTrumpSuit returns the trump suit from the bid result

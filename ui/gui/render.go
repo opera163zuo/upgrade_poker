@@ -499,10 +499,12 @@ func (g *GUI) bestBidChoiceForSuit(choices []baseui.BidChoice, suit string) (bas
 func bidPriority(kind string) int {
 	switch kind {
 	case "对王(无主)":
-		return 3
+		return 4
 	case "三张级牌":
-		return 2
+		return 3
 	case "对级牌":
+		return 2
+	case "单张级牌":
 		return 1
 	default:
 		return 0
