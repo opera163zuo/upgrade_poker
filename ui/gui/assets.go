@@ -23,79 +23,71 @@ var (
 	uiFontOnce sync.Once
 )
 
+func loadFont(path string) font.Face {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	// 先尝试作为TTF/OTF解析
+	tt, err := opentype.Parse(data)
+	if err == nil {
+		f, _ := opentype.NewFace(tt, &opentype.FaceOptions{
+			Size: 14, DPI: 72, Hinting: font.HintingFull,
+		})
+		if f != nil {
+			return f
+		}
+	}
+	// 尝试作为TTC（字体集）解析
+	col, err := opentype.ParseCollection(data)
+	if err == nil && col.NumFonts() > 0 {
+		for i := 0; i < col.NumFonts(); i++ {
+			tt, err := col.Font(i)
+			if err == nil {
+				f, _ := opentype.NewFace(tt, &opentype.FaceOptions{
+					Size: 14, DPI: 72, Hinting: font.HintingFull,
+				})
+				if f != nil {
+					return f
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func uiFontFace() font.Face {
 	uiFontOnce.Do(func() {
-		// 尝试加载系统自带中文字体
-		var fontPath string
+		// 优先加载项目自带字体（assets/fonts/）
+		dir := assetDir()
+		fontPath := filepath.Join(dir, "fonts", "wqy-microhei.ttc")
+		if f := loadFont(fontPath); f != nil {
+			uiFont = f
+			return
+		}
+		// 方案二：系统字体
+		var sysPaths []string
 		switch runtime.GOOS {
 		case "windows":
-			// Windows 中文字体
-			candidates := []string{
-				"C:\\Windows\\Fonts\\msyh.ttc",    // 微软雅黑
-				"C:\\Windows\\Fonts\\simsun.ttc",   // 宋体
-				"C:\\Windows\\Fonts\\simhei.ttf",   // 黑体
-				"C:\\Windows\\Fonts\\yahei.ttf",
-			}
-			for _, p := range candidates {
-				if _, err := os.Stat(p); err == nil {
-					fontPath = p
-					break
-				}
+			sysPaths = []string{
+				`C:\Windows\Fonts\msyh.ttc`,
+				`C:\Windows\Fonts\simsun.ttc`,
+				`C:\Windows\Fonts\simhei.ttf`,
 			}
 		case "linux":
-			candidates := []string{
+			sysPaths = []string{
 				"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-				"/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-				"/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", // 文泉驿
-			}
-			for _, p := range candidates {
-				if _, err := os.Stat(p); err == nil {
-					fontPath = p
-					break
-				}
+				"/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+				"/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
 			}
 		}
-
-		if fontPath != "" {
-			data, err := os.ReadFile(fontPath)
-			if err == nil {
-				tt, err := opentype.Parse(data)
-				if err == nil {
-					f, err := opentype.NewFace(tt, &opentype.FaceOptions{
-						Size:    14,
-						DPI:     72,
-						Hinting: font.HintingFull,
-					})
-					if err == nil {
-						uiFont = f
-						return
-					}
-				}
+		for _, p := range sysPaths {
+			if f := loadFont(p); f != nil {
+				uiFont = f
+				return
 			}
 		}
-		// 方案二：加载本地assets/fonts/下的字体
-		dir := assetDir()
-		fontCandidates := []string{
-			filepath.Join(dir, "fonts", "NotoSansCJK-Regular.ttc"),
-			filepath.Join(dir, "fonts", "msyh.ttf"),
-			filepath.Join(dir, "fonts", "simsun.ttc"),
-		}
-		for _, p := range fontCandidates {
-			data, err := os.ReadFile(p)
-			if err == nil {
-				tt, err := opentype.Parse(data)
-				if err == nil {
-					f, _ := opentype.NewFace(tt, &opentype.FaceOptions{
-						Size: 14, DPI: 72, Hinting: font.HintingFull,
-					})
-					if f != nil {
-						uiFont = f
-						return
-					}
-				}
-			}
-		}
-		// 兜底：basicfont（不支持中文）
+		// 兜底：basicfont（仅ASCII）
 		uiFont = basicfont.Face7x13
 	})
 	return uiFont
