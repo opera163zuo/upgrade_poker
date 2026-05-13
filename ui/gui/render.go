@@ -49,6 +49,7 @@ func (g *GUI) Draw(screen *ebiten.Image) {
 	g.drawEast(screen, view)
 	g.drawCenter(screen, view)
 	g.drawSouth(screen, view, selected)
+	g.drawMenuBar(screen)
 	g.drawButtons(screen, view)
 	g.drawOverlay(screen, view)
 }
@@ -114,7 +115,31 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 	}
 }
 
+func (g *GUI) drawMenuBar(screen *ebiten.Image) {
+	// 菜单栏背景
+	vector.DrawFilledRect(screen, 0, 0, LogicalWidth, MenuBarH, color.RGBA{0x0d, 0x17, 0x22, 0xff}, false)
+	g.drawText(screen, "游戏(G)  功能(F)  设定(S)  帮助(H)", 10, 14, color.RGBA{0xaa, 0xcc, 0xaa, 0xff})
+}
+
 func (g *GUI) drawButtons(screen *ebiten.Image, view baseui.TableView) {
+	if len(view.Buttons) == 0 {
+		return
+	}
+	// 欢迎界面：中央大按钮
+	if view.Phase == baseui.PhaseWelcome {
+		btn := view.Buttons[0]
+		bx := LogicalWidth/2 - 120
+		by := LogicalHeight/2 + 60
+		vector.DrawFilledRect(screen, float32(bx), float32(by), 240, 50, color.RGBA{0xdb, 0xb7, 0x43, 0xff}, false)
+		vector.StrokeRect(screen, float32(bx), float32(by), 240, 50, 2, outlineColor, false)
+		textW := len(btn.Label) * 7
+		g.drawText(screen, btn.Label, bx+(240-textW)/2, by+30, color.Black)
+		g.st.mu.Lock()
+		g.st.buttonRects = append(g.st.buttonRects, buttonRect{rect: rect{x: bx, y: by, w: 240, h: 50}, action: baseui.ActionType(btn.ID)})
+		g.st.mu.Unlock()
+		return
+	}
+	// 常规底部按钮
 	for i, b := range view.Buttons {
 		x := 210 + i*110
 		y := 440
@@ -128,9 +153,22 @@ func (g *GUI) drawButtons(screen *ebiten.Image, view baseui.TableView) {
 }
 
 func (g *GUI) drawOverlay(screen *ebiten.Image, view baseui.TableView) {
-	if view.Message == "" || len(view.Buttons) > 0 {
+	if view.Message == "" {
 		return
 	}
+	// 欢迎界面：中央带标题的消息区域
+	if view.Phase == baseui.PhaseWelcome {
+		vector.DrawFilledRect(screen, 80, 100, 480, 200, messageBgColor, false)
+		vector.StrokeRect(screen, 80, 100, 480, 200, 2, hiliteColor, false)
+		title := "升级（拖拉机）纸牌游戏"
+		subtitle := "两副牌 · 2为常主 · 4人对战"
+		g.drawText(screen, title, LogicalWidth/2-(len(title)*7)/2, 135, color.RGBA{0xff, 0xd6, 0x54, 0xff})
+		g.drawText(screen, subtitle, LogicalWidth/2-(len(subtitle)*7)/2, 165, color.White)
+		hint := "点击下方按钮开始游戏"
+		g.drawText(screen, hint, LogicalWidth/2-(len(hint)*7)/2, 240, color.RGBA{0xaa, 0xcc, 0xaa, 0xff})
+		return
+	}
+	// 普通消息弹窗
 	vector.DrawFilledRect(screen, 150, 170, 340, 80, messageBgColor, false)
 	vector.StrokeRect(screen, 150, 170, 340, 80, 1, hiliteColor, false)
 	for i, line := range strings.Split(view.Message, "\n") {
@@ -163,7 +201,6 @@ func (g *GUI) drawCard(screen *ebiten.Image, x, y int, c baseui.CardView, select
 			return
 		}
 	}
-
 	// 备选：纯色方块渲染
 	fill := cardFaceColor
 	if !c.FaceUp {
@@ -190,10 +227,9 @@ func (g *GUI) drawCard(screen *ebiten.Image, x, y int, c baseui.CardView, select
 	}
 }
 
-
 func cardTitle(c baseui.CardView) string {
-    if c.Rank != "" && c.Suit != "" {
-        return c.Suit + c.Rank
-    }
-    return c.Label
+	if c.Rank != "" && c.Suit != "" {
+		return c.Suit + c.Rank
+	}
+	return c.Label
 }

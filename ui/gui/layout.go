@@ -1,6 +1,7 @@
 package gui
 
 const (
+	MenuBarH    = 24    // 菜单栏高度
 	LogicalWidth  = 640
 	LogicalHeight = 480
 
