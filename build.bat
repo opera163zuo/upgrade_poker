@@ -26,6 +26,6 @@ echo ========================================
 echo  完成！
 echo  Windows: upgrade.exe
 echo  Release: release\upgrade_%VERSION%_win64.exe
-echo  运行: upgrade.exe 或 upgrade.exe -ui=gui
+echo  运行: upgrade.exe
 echo ========================================
 pause

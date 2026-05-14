@@ -29,7 +29,7 @@ run: build
 	./$(BINARY)
 
 run-gui: build
-	./$(BINARY) -ui=gui
+	./$(BINARY)          # 仅GUI模式
 
 test:
 	go test -v -timeout 30s ./...

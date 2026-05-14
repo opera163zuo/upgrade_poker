@@ -181,7 +181,7 @@ func (g *Game) DealAnimated() bool {
 	return false
 }
 
-// RunBiddingPhase handles bidding with TUI
+// RunBiddingPhase handles bidding phase
 func (g *Game) RunBiddingPhase() bool {
 	level := g.DealerLevel()
 	g.CurrentBid = nil
@@ -370,7 +370,7 @@ func (g *Game) PlayTrickFromLead(leadPlayer PlayerPosition) (PlayerPosition, boo
 		if player.IsHuman {
 			g.uiWaitingForHuman = true
 			g.render()
-			cards, restarted = g.humanPlayTUI(player, trick)
+			cards, restarted = g.humanPlayCards(player, trick)
 			g.uiWaitingForHuman = false
 			if restarted {
 				g.render()
@@ -414,8 +414,8 @@ func (g *Game) PlayTrickFromLead(leadPlayer PlayerPosition) (PlayerPosition, boo
 	return winner, false
 }
 
-// humanPlayTUI handles human play via TUI
-func (g *Game) humanPlayTUI(player *Player, trick *Trick) ([]Card, bool) {
+// humanPlayCards handles human play (card selection)
+func (g *Game) humanPlayCards(player *Player, trick *Trick) ([]Card, bool) {
 	level := g.DealerLevel()
 	g.setPhase(baseui.PhasePlaying)
 
@@ -576,7 +576,7 @@ func (g *Game) HandleUpgrade() bool {
 		resultMsg += fmt.Sprintf("\n%s方升级至 %s", formatTeam(upgradeTeam), LevelDisplayName(g.Level[upgradeTeam]))
 	}
 
-	// Show result via TUI
+	// Show result
 	msg := fmt.Sprintf("本局结束！\n庄家方（%s）得分：%d\n闲家方（%s）得分：%d\n%s\n下一局庄家：%s",
 		formatTeam(dealerTeam), g.TeamScore[dealerTeam],
 		formatTeam(opponentTeam), opponentScore,
