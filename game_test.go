@@ -477,3 +477,300 @@ func TestNonTrumpDisplayOrder(t *testing.T) {
 		}
 	}
 }
+
+// --- Consecutive pair (tractor) tests with level-rank skipping ---
+
+func TestConsecutivePairsSkipLevelRank(t *testing.T) {
+	// When level=5, ♥4+♥4 and ♥6+♥6 should form a tractor
+	// because the level rank (5) is skipped in the non-trump suit
+	level := Rank5
+	trumpSuit := SuitSpade
+
+	pair4 := []Card{{Suit: SuitHeart, Rank: Rank4, Copy: 0}, {Suit: SuitHeart, Rank: Rank4, Copy: 1}}
+	pair6 := []Card{{Suit: SuitHeart, Rank: Rank6, Copy: 0}, {Suit: SuitHeart, Rank: Rank6, Copy: 1}}
+
+	// 44 + 66 should be detected as a tractor when level=5
+	tractorCards := append(pair4, pair6...)
+	groups := AnalyzePlay(tractorCards, trumpSuit, level)
+
+	foundTractor := false
+	for _, g := range groups {
+		if g.IsTractor && len(g.Cards) == 4 {
+			foundTractor = true
+			break
+		}
+	}
+	if !foundTractor {
+		t.Error("44+66 should be detected as a tractor when level=5 (skipping rank 5)")
+	}
+
+	// Verify the tractor is a valid leading play
+	hand := make([]Card, len(tractorCards))
+	copy(hand, tractorCards)
+	otherHands := [][]Card{
+		{{Suit: SuitClub, Rank: RankA, Copy: 0}},
+		{{Suit: SuitDiamond, Rank: RankA, Copy: 0}},
+		{},
+	}
+	if !ValidatePlay(tractorCards, nil, hand, otherHands, trumpSuit, level) {
+		t.Error("44+66 tractor should be a valid leading play when level=5")
+	}
+}
+
+func TestLevelRankItselfNotConsecutiveWithOthers(t *testing.T) {
+	// Level-rank pairs should NOT be consecutive with other pairs
+	level := Rank5
+	trumpSuit := SuitSpade
+
+	pair5 := []Card{{Suit: SuitHeart, Rank: Rank5, Copy: 0}, {Suit: SuitHeart, Rank: Rank5, Copy: 1}}
+	pair6 := []Card{{Suit: SuitHeart, Rank: Rank6, Copy: 0}, {Suit: SuitHeart, Rank: Rank6, Copy: 1}}
+
+	// 55 (level rank) + 66 should NOT be a tractor
+	cards := append(pair5, pair6...)
+	groups := AnalyzePlay(cards, trumpSuit, level)
+
+	for _, g := range groups {
+		if g.IsTractor {
+			t.Error("55+66 should NOT be a tractor when level=5 (level-rank 5 is not consecutive with 6)")
+			return
+		}
+	}
+}
+
+func TestNormalConsecutivePairsUnaffected(t *testing.T) {
+	// Normal consecutive pairs (77+88) should still work
+	level := Rank5
+	trumpSuit := SuitSpade
+
+	pair7 := []Card{{Suit: SuitHeart, Rank: Rank7, Copy: 0}, {Suit: SuitHeart, Rank: Rank7, Copy: 1}}
+	pair8 := []Card{{Suit: SuitHeart, Rank: Rank8, Copy: 0}, {Suit: SuitHeart, Rank: Rank8, Copy: 1}}
+
+	cards := append(pair7, pair8...)
+	groups := AnalyzePlay(cards, trumpSuit, level)
+
+	foundTractor := false
+	for _, g := range groups {
+		if g.IsTractor && len(g.Cards) == 4 {
+			foundTractor = true
+			break
+		}
+	}
+	if !foundTractor {
+		t.Error("77+88 should still be a tractor (level=5 does not affect them)")
+	}
+}
+
+// --- ResolveThrow pair protection tests ---
+
+func TestSinglePairNotResolvedByResolveThrow(t *testing.T) {
+	// A single pair should NEVER be resolved (reduced to single card) by ResolveThrow
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	// Create a pair of ♠Q — not max because other hands have ♠A pairs
+	pair := []Card{
+		{Suit: SuitSpade, Rank: RankQ, Copy: 0},
+		{Suit: SuitSpade, Rank: RankQ, Copy: 1},
+	}
+	allHands := [][]Card{
+		{{Suit: SuitSpade, Rank: RankA, Copy: 0}, {Suit: SuitSpade, Rank: RankA, Copy: 1}}, // higher pair
+		{},
+		{},
+	}
+
+	result := ResolveThrow(pair, allHands, trumpSuit, level)
+	if len(result) != 2 {
+		t.Errorf("Single pair should not be resolved, got %d cards instead of 2", len(result))
+	}
+}
+
+func TestSingleTractorNotResolvedByResolveThrow(t *testing.T) {
+	level := Rank5
+	trumpSuit := SuitSpade
+
+	// 44+66 tractor when level=5 (now detected as tractor)
+	pair4 := []Card{{Suit: SuitHeart, Rank: Rank4, Copy: 0}, {Suit: SuitHeart, Rank: Rank4, Copy: 1}}
+	pair6 := []Card{{Suit: SuitHeart, Rank: Rank6, Copy: 0}, {Suit: SuitHeart, Rank: Rank6, Copy: 1}}
+	tractorCards := append(pair4, pair6...)
+
+	// Other hands have higher pairs
+	allHands := [][]Card{
+		{{Suit: SuitHeart, Rank: RankA, Copy: 0}, {Suit: SuitHeart, Rank: RankA, Copy: 1}},
+		{},
+		{},
+	}
+
+	result := ResolveThrow(tractorCards, allHands, trumpSuit, level)
+	if len(result) != 4 {
+		t.Errorf("Single tractor should not be resolved, got %d cards instead of 4", len(result))
+	}
+}
+
+func TestMultiGroupThrowStillResolved(t *testing.T) {
+	// Multi-group 甩牌 should still be resolved (existing behavior for non-max groups)
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	// AA pair + QQ pair — QQ is not max if others have KK
+	cards := []Card{
+		{Suit: SuitSpade, Rank: RankA, Copy: 0},
+		{Suit: SuitSpade, Rank: RankA, Copy: 1},
+		{Suit: SuitSpade, Rank: RankQ, Copy: 0},
+		{Suit: SuitSpade, Rank: RankQ, Copy: 1},
+	}
+	allHands := [][]Card{
+		{{Suit: SuitSpade, Rank: RankK, Copy: 0}, {Suit: SuitSpade, Rank: RankK, Copy: 1}}, // KK beats QQ
+		{},
+		{},
+	}
+
+	result := ResolveThrow(cards, allHands, trumpSuit, level)
+	if len(result) == 4 {
+		t.Error("Multi-group throw with non-max components should be resolved to single card")
+	}
+	if len(result) != 1 {
+		t.Errorf("Expected 1 card after resolution, got %d", len(result))
+	}
+}
+
+// --- Pair validation tests ---
+
+func TestValidatePairLeadingAlwaysValid(t *testing.T) {
+	// A simple pair should always be valid when leading,
+	// regardless of whether it's max
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	pair := []Card{
+		{Suit: SuitSpade, Rank: Rank7, Copy: 0},
+		{Suit: SuitSpade, Rank: Rank7, Copy: 1},
+	}
+	hand := make([]Card, len(pair))
+	copy(hand, pair)
+	// Other players have higher pairs, but a single pair lead should still be valid
+	otherHands := [][]Card{
+		{{Suit: SuitSpade, Rank: RankA, Copy: 0}, {Suit: SuitSpade, Rank: RankA, Copy: 1}},
+		{},
+		{},
+	}
+	if !ValidatePlay(pair, nil, hand, otherHands, trumpSuit, level) {
+		t.Error("Single pair should always be valid as leading play")
+	}
+}
+
+func TestValidateTrumpPairLeadingAlwaysValid(t *testing.T) {
+	// Trump pair should also be valid when leading
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	pair := []Card{
+		{Suit: SuitHeart, Rank: RankA, Copy: 0},
+		{Suit: SuitHeart, Rank: RankA, Copy: 1},
+	}
+	hand := make([]Card, len(pair))
+	copy(hand, pair)
+	otherHands := [][]Card{
+		{{Suit: SuitHeart, Rank: RankK, Copy: 0}, {Suit: SuitHeart, Rank: RankK, Copy: 1}},
+		{},
+		{},
+	}
+	if !ValidatePlay(pair, nil, hand, otherHands, trumpSuit, level) {
+		t.Error("Trump pair should always be valid as leading play")
+	}
+}
+
+func TestValidateLevelPairLeading(t *testing.T) {
+	// Level-rank pair should also be valid
+	level := Rank5
+	trumpSuit := SuitHeart
+
+	// Two level-rank cards from different suits form a trump pair
+	pair := []Card{
+		{Suit: SuitSpade, Rank: Rank5, Copy: 0},
+		{Suit: SuitClub, Rank: Rank5, Copy: 1},
+	}
+	hand := make([]Card, len(pair))
+	copy(hand, pair)
+	otherHands := [][]Card{
+		{{Suit: SuitHeart, Rank: RankK, Copy: 0}},
+		{},
+		{},
+	}
+	if !ValidatePlay(pair, nil, hand, otherHands, trumpSuit, level) {
+		t.Error("Level-rank pair should be valid as leading play")
+	}
+}
+
+// --- 大小王对子 tests ---
+
+func TestJokerPairs(t *testing.T) {
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	// 大王+大王 should be a valid pair
+	bigJokerPair := []Card{
+		{Suit: SuitJoker, Rank: RankBigJoker, Copy: 0},
+		{Suit: SuitJoker, Rank: RankBigJoker, Copy: 1},
+	}
+	groups := AnalyzePlay(bigJokerPair, trumpSuit, level)
+	foundPair := false
+	for _, g := range groups {
+		if g.IsPair && len(g.Cards) == 2 {
+			foundPair = true
+			break
+		}
+	}
+	if !foundPair {
+		t.Error("大王+大王 should be detected as a pair")
+	}
+
+	// 小王+小王 should be a valid pair
+	smallJokerPair := []Card{
+		{Suit: SuitJoker, Rank: RankSmallJoker, Copy: 0},
+		{Suit: SuitJoker, Rank: RankSmallJoker, Copy: 1},
+	}
+	groups = AnalyzePlay(smallJokerPair, trumpSuit, level)
+	foundPair = false
+	for _, g := range groups {
+		if g.IsPair && len(g.Cards) == 2 {
+			foundPair = true
+			break
+		}
+	}
+	if !foundPair {
+		t.Error("小王+小王 should be detected as a pair")
+	}
+
+	// 大王+小王 should NOT be a pair
+	mixedJoker := []Card{
+		{Suit: SuitJoker, Rank: RankBigJoker, Copy: 0},
+		{Suit: SuitJoker, Rank: RankSmallJoker, Copy: 1},
+	}
+	groups = AnalyzePlay(mixedJoker, trumpSuit, level)
+	for _, g := range groups {
+		if g.IsPair {
+			t.Error("大王+小王 should NOT be detected as a pair")
+			return
+		}
+	}
+}
+
+func TestValidateBigJokerPairLeading(t *testing.T) {
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	pair := []Card{
+		{Suit: SuitJoker, Rank: RankBigJoker, Copy: 0},
+		{Suit: SuitJoker, Rank: RankBigJoker, Copy: 1},
+	}
+	hand := make([]Card, len(pair))
+	copy(hand, pair)
+	otherHands := [][]Card{
+		{},
+		{},
+		{},
+	}
+	if !ValidatePlay(pair, nil, hand, otherHands, trumpSuit, level) {
+		t.Error("大王对 should be a valid leading play")
+	}
+}

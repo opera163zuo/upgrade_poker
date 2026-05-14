@@ -263,24 +263,27 @@ func findTractors(pairRanks []Rank, trumpSuit Suit, level Rank) [][]Rank {
 	return tractors
 }
 
-// areConsecutiveRanks checks if two ranks are consecutive in trump order or normal order
+// areConsecutiveRanks checks if two ranks are consecutive for tractor detection.
+// The level rank is skipped in the sequence because level-rank cards don't participate
+// as normal suit cards. E.g. when level=5, ranks 4 and 6 ARE consecutive
+// (5 is the level and not available as a normal suit rank).
 func areConsecutiveRanks(a, b Rank, trumpSuit Suit, level Rank) bool {
-	// For trump ranks, use trump order
-	// For non-trump ranks, use normal rank order
-	// This is simplified: we check if they differ by 1 in the relevant ordering
-
-	// For level rank cards and 2s in trump, the ordering is:
-	// MainLevel > OffLevel > Main2 > Off2 > A > K > Q > J > 9 > 8 > 7 > 6 > 5 > 4 > 3
-	// We need to check if they're adjacent in this ordering
-
-	aOrder := trumpRankOrder(a, trumpSuit, level)
-	bOrder := trumpRankOrder(b, trumpSuit, level)
-
-	diff := aOrder - bOrder
-	if diff < 0 {
-		diff = -diff
+	if a > b {
+		a, b = b, a
 	}
-	return diff == 1
+	if a == b {
+		return false
+	}
+	// Neither rank can be the level rank itself
+	if a == level || b == level {
+		return false
+	}
+	// Advance one step, skipping the level rank if it's in between
+	next := a + 1
+	if next == level {
+		next = level + 1
+	}
+	return next == b
 }
 
 // trumpRankOrder gives a linear order for trump rank adjacency
@@ -845,12 +848,21 @@ func min(a, b int) int {
 // ResolveThrow checks if a leading multi-card play is a valid throw (all groups are max).
 // If all groups are unbeatable, returns the cards as-is.
 // Otherwise, returns only the smallest single card.
+// ResolveThrow checks if a leading multi-card play is a valid throw (all groups are max).
+// Single groups (single pair, single tractor) are always played as-is — no resolution needed.
+// Only 甩牌 with multiple groups is checked and potentially reduced.
 func ResolveThrow(cards []Card, allHands [][]Card, trumpSuit Suit, level Rank) []Card {
 	if len(cards) <= 1 || len(allHands) == 0 {
 		return cards
 	}
 
 	groups := AnalyzePlay(cards, trumpSuit, level)
+
+	// Single group (one pair, one tractor, one single) — always valid, play as-is
+	if len(groups) <= 1 {
+		return cards
+	}
+
 	allMax := true
 	for _, g := range groups {
 		if !isMaxGroup(g, allHands, trumpSuit, level) {
