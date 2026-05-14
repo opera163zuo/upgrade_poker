@@ -145,9 +145,8 @@ func (g *Game) Deal() {
 	copy(g.BottomCards, g.Deck[idx:idx+8])
 }
 
-// DealAnimated deals cards one by one with animation
-// DealAnimated deals cards one by one with animation
-// During dealing, if human can bid (亮主), pause and ask
+// DealAnimated deals cards one by one with animation.
+// Bidding is NOT handled here — it happens separately in RunBiddingPhase.
 func (g *Game) DealAnimated() bool {
 	g.Deck = NewDeck()
 	ShuffleDeck(g.Deck, g.rng)
@@ -159,8 +158,6 @@ func (g *Game) DealAnimated() bool {
 	g.CurrentBid = nil
 	g.TrumpSuit = SuitJoker
 	g.setPhase(baseui.PhaseDealing)
-	level := g.DealerLevel()
-	humanAsked := false
 
 	idx := 0
 	for round := 0; round < 25; round++ {
@@ -170,65 +167,6 @@ func (g *Game) DealAnimated() bool {
 			idx++
 		}
 		g.ui.SleepForRedraw(40 * time.Millisecond)
-
-		// After each round, check if human (South) can bid
-		if !humanAsked && round >= 2 {
-			human := g.Players[PositionSouth]
-			possibleBids := CanBid(human, level)
-			var validBids []Bid
-			for _, bid := range possibleBids {
-				if g.CurrentBid == nil || CanOverrideBid(bid, *g.CurrentBid) {
-					validBids = append(validBids, bid)
-				}
-			}
-			if len(validBids) > 0 {
-				g.setBidOptions(validBids)
-				g.setPhase(baseui.PhaseBidding)
-				g.showMessage("请选择亮主方式", nil)
-
-				for {
-					action, restarted := g.waitAction()
-					if restarted {
-						return true
-					}
-					if action.Type == baseui.ActionBid {
-						if bid := g.matchBidAction(validBids, action); bid != nil {
-							b := *bid
-							b.Player = PositionSouth
-							g.applyBid(&b)
-							humanAsked = true
-							break
-						}
-					} else if action.Type == baseui.ActionPass {
-						humanAsked = true
-						break
-					}
-				}
-				g.showMessage("", nil)
-				g.setPhase(baseui.PhaseDealing)
-			}
-		}
-
-		// AI players check for bid during dealing (only override if higher)
-		for p := 0; p < 4; p++ {
-			pos := PlayerPosition(p)
-			if g.Players[pos].IsHuman {
-				continue
-			}
-			bid := g.aiBidSimple(g.Players[pos], func() []Bid {
-				possibleBids := CanBid(g.Players[pos], level)
-				var vb []Bid
-				for _, b := range possibleBids {
-					if g.CurrentBid == nil || CanOverrideBid(b, *g.CurrentBid) {
-						vb = append(vb, b)
-					}
-				}
-				return vb
-			}())
-			if bid != nil {
-				g.applyBid(bid)
-			}
-		}
 	}
 
 	g.BottomCards = make([]Card, 8)
