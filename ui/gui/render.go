@@ -41,9 +41,9 @@ func (g *GUI) drawText(dst *ebiten.Image, s string, x, y int, clr color.Color) {
 }
 
 func (g *GUI) drawTextBadge(dst *ebiten.Image, s string, x, y, padX, padY int, fill color.Color, border color.Color, textColor color.Color) {
-	width := len([]rune(s))*12 + padX*2
-	height := 18 + padY*2
-	top := y - 14 - padY
+	width := len([]rune(s))*8 + padX*2
+	height := 12 + padY*2
+	top := y - 10 - padY
 	vector.DrawFilledRect(dst, float32(x-padX), float32(top), float32(width), float32(height), fill, false)
 	vector.StrokeRect(dst, float32(x-padX), float32(top), float32(width), float32(height), 1, border, false)
 	g.drawText(dst, s, x, y, textColor)
@@ -546,7 +546,7 @@ func (g *GUI) drawBidSuitButton(screen *ebiten.Image, x, y int, choice baseui.Bi
 	if choice.Suit != "王" {
 		symbol = bidSuitSymbol(choice.Suit, false)
 	}
-	g.drawText(screen, symbol, x+10, y+21, textColor)
+	g.drawText(screen, symbol, x+10, y+17, textColor)
 	g.st.mu.Lock()
 	g.st.buttonRects = append(g.st.buttonRects, buttonRect{rect: rect{x: x, y: y, w: BidSymbolSize, h: BidSymbolSize}, action: baseui.UIAction{Type: baseui.ActionSelectBid, BidType: choice.Type, BidSuit: choice.Suit}, enabled: enabled})
 	g.st.mu.Unlock()
@@ -775,7 +775,7 @@ func (g *GUI) drawCardWithAlpha(screen *ebiten.Image, x, y int, c baseui.CardVie
 	}
 	sort.Strings(lines)
 	for i, line := range lines {
-		g.drawText(screen, line, x+10, y+24+i*18, withAlpha(color.RGBA{0x00, 0x00, 0x00, 0xff}, alpha))
+		g.drawText(screen, line, x+10, y+18+i*12, withAlpha(color.RGBA{0x00, 0x00, 0x00, 0xff}, alpha))
 	}
 }
 

@@ -32,7 +32,7 @@ func loadFont(path string) font.Face {
 	tt, err := opentype.Parse(data)
 	if err == nil {
 		f, _ := opentype.NewFace(tt, &opentype.FaceOptions{
-			Size: 16, DPI: 72, Hinting: font.HintingFull,
+			Size: 8, DPI: 72, Hinting: font.HintingFull,
 		})
 		if f != nil {
 			return f
@@ -45,7 +45,7 @@ func loadFont(path string) font.Face {
 			tt, err := col.Font(i)
 			if err == nil {
 				f, _ := opentype.NewFace(tt, &opentype.FaceOptions{
-					Size: 16, DPI: 72, Hinting: font.HintingFull,
+					Size: 8, DPI: 72, Hinting: font.HintingFull,
 				})
 				if f != nil {
 					return f
