@@ -13,34 +13,34 @@ const (
 	TableY   = 74
 	TableW   = 590
 	TableH   = 346
-	CardW    = 71
-	CardH    = 96
+	CardW    = 35
+	CardH    = 48
 
 	SouthHandX   = 32
-	SouthHandY   = 376
-	SouthHandGap = 18
-	NorthHandY   = 78
-	NorthHandGap = 13
+	SouthHandY   = 396
+	SouthHandGap = 9
+	NorthHandY   = 86
+	NorthHandGap = 6
 	WestHandX    = 16
-	WestHandY    = 150
-	WestHandGap  = 4
+	WestHandY    = 175
+	WestHandGap  = 2
 	EastHandX    = 554
-	EastHandY    = 246
-	EastHandGap  = 4
+	EastHandY    = 223
+	EastHandGap  = 2
 	BottomX      = 230
 	BottomY      = 186
-	BottomGap    = 14
+	BottomGap    = 7
 
 	ActionBtnW = 96
 	ActionBtnH = 28
-	ActionBtnY = 438
+	ActionBtnY = 446
 
 	BidPanelX      = 396
 	BidPanelY      = 170
 	BidPanelW      = 194
 	BidPanelH      = 120
-	BidSymbolSize  = 30
-	BidSymbolGap   = 8
+	BidSymbolSize  = 24
+	BidSymbolGap   = 6
 	BidPrimaryBtnW = 76
 	BidSecondaryW  = 76
 )

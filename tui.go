@@ -598,7 +598,7 @@ func (t *TUI) drawNorthPlayer() {
 	cx := t.width / 2
 
 	// Player label
-	label := "北(AI)"
+	label := "上(AI)"
 	style := tcell.StyleDefault
 	if g.Dealer == PositionNorth {
 		style = style.Bold(true)
@@ -614,7 +614,7 @@ func (t *TUI) drawNorthPlayer() {
 		}
 		startX := cx - count*3
 		for k := 0; k < count; k++ {
-			t.drawCardBack(startX+k*6, 4)
+			t.drawCardBack(startX+k*5, 4)
 		}
 		return
 	}
@@ -638,7 +638,7 @@ func (t *TUI) drawWestPlayer() {
 	x := 2
 
 	// Player label
-	label := "西(AI)"
+	label := "左(AI)"
 	style := tcell.StyleDefault
 	if g.Dealer == PositionWest {
 		style = style.Bold(true)
@@ -677,7 +677,7 @@ func (t *TUI) drawEastPlayer() {
 	x := t.width - 20
 
 	// Player label
-	label := "东(AI)"
+	label := "右(AI)"
 	style := tcell.StyleDefault
 	if g.Dealer == PositionEast {
 		style = style.Bold(true)
@@ -787,7 +787,7 @@ func (t *TUI) drawSouthHand() {
 			return
 		}
 		cardW := 5
-		gap := 1
+		gap := 0
 		handY := t.height - 6
 		// Center dealing cards horizontally, ensure all cards fit
 		maxFit := (t.width - 4) / (cardW + gap)
@@ -800,7 +800,7 @@ func (t *TUI) drawSouthHand() {
 		if dealStartX < 2 {
 			dealStartX = 2
 		}
-		label := "南(你)"
+		label := "下(你)"
 		t.drawString(t.width/2-runewidth.StringWidth(label)/2, handY-2, label, tcell.StyleDefault.Bold(true))
 		for k := 0; k < count; k++ {
 			x := dealStartX + k*(cardW+gap)
@@ -820,7 +820,7 @@ func (t *TUI) drawSouthHand() {
 	// Card dimensions: 5 wide x 3 tall (to fit "10")
 	cardW := 5
 	cardH := 3
-	gap := 1
+	gap := 0
 	totalCards := len(player.Hand)
 
 	// How many cards fit per row
@@ -841,7 +841,7 @@ func (t *TUI) drawSouthHand() {
 	}
 
 	// Label
-	label := "南(你)"
+	label := "下(你)"
 	t.drawString(t.width/2-runewidth.StringWidth(label)/2, handY-2, label, tcell.StyleDefault.Bold(true))
 
 	// Show waiting indicator when it's human's turn
@@ -980,7 +980,7 @@ func (t *TUI) drawCardBack(x, y int) {
 // drawCardsRow draws a row of cards (for AI plays)
 func (t *TUI) drawCardsRow(x, y int, cards []Card, selectable bool) {
 	for i, c := range cards {
-		t.drawCard(x+i*6, y, c, false, IsTrump(c, t.game.TrumpSuit, t.game.DealerLevel()), false)
+		t.drawCard(x+i*5, y, c, false, IsTrump(c, t.game.TrumpSuit, t.game.DealerLevel()), false)
 	}
 }
 
@@ -1159,13 +1159,13 @@ func splitLines(s string) []string {
 
 func parsePlayerPosition(label string) PlayerPosition {
 	switch label {
-	case "南", "南(你)":
+	case "下", "下(你)":
 		return PositionSouth
-	case "西", "西(AI)":
+	case "左", "左(AI)":
 		return PositionWest
-	case "北", "北(AI)":
+	case "上", "上(AI)":
 		return PositionNorth
-	case "东", "东(AI)":
+	case "右", "右(AI)":
 		return PositionEast
 	default:
 		return PositionSouth

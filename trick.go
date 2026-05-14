@@ -121,13 +121,13 @@ func (t *Trick) DisplayTrick() string {
 func formatPosition(pos PlayerPosition) string {
 	switch pos {
 	case PositionSouth:
-		return "南(你)"
+		return "下(你)"
 	case PositionWest:
-		return "西(AI)"
+		return "左(AI)"
 	case PositionNorth:
-		return "北(AI)"
+		return "上(AI)"
 	case PositionEast:
-		return "东(AI)"
+		return "右(AI)"
 	}
 	return "??"
 }

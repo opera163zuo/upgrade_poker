@@ -600,15 +600,15 @@ func (g *Game) HandleUpgrade() bool {
 		resultMsg, formatPosition(newDealer))
 
 	if g.Level[Team0] >= RankGameWon {
-		msg += "\n\n南北方获胜！"
+		msg += "\n\n上下方获胜！"
 		g.Phase = PhaseGameOver
 	} else if g.Level[Team1] >= RankGameWon {
-		msg += "\n\n东西方获胜！"
+		msg += "\n\n左右方获胜！"
 		g.Phase = PhaseGameOver
 	}
 
 	g.setPhase(baseui.PhaseHandResult)
-	g.showMessage(msg, nil)
+	g.showMessage(msg, []baseui.ButtonSpec{{ID: string(baseui.ActionConfirm), Label: "按任意键继续 / 5秒后自动开始", Enabled: true}})
 	_, _, restarted := g.waitActionOrTimeout(5 * time.Second)
 	if restarted {
 		return true
@@ -902,9 +902,9 @@ func (g *Game) UISnapshot() baseui.TableView {
 
 func formatTeam(team Team) string {
 	if team == Team0 {
-		return "南北"
+		return "上下"
 	}
-	return "东西"
+	return "左右"
 }
 
 // cardsToString formats cards for display

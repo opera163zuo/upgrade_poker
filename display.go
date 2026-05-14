@@ -19,7 +19,7 @@ func DisplayGameState(game *Game) {
 	fmt.Printf("║  庄家：%s    闲家：%s      ║\n",
 		formatTeam(game.DealerTeam()),
 		formatTeam(game.OpponentTeam()))
-	fmt.Printf("║  南北级：%s  东西级：%s         ║\n",
+	fmt.Printf("║  上下级：%s  左右级：%s         ║\n",
 		LevelDisplayName(game.Level[Team0]),
 		LevelDisplayName(game.Level[Team1]))
 	fmt.Println("╚══════════════════════════════════════╝")
@@ -29,8 +29,8 @@ func DisplayGameState(game *Game) {
 func DisplayScore(game *Game) {
 	fmt.Println()
 	fmt.Println("┌────────── 得分 ──────────┐")
-	fmt.Printf("│ 南北方：%4d分            │\n", game.TeamScore[Team0])
-	fmt.Printf("│ 东西方：%4d分            │\n", game.TeamScore[Team1])
+	fmt.Printf("│ 上下方：%4d分            │\n", game.TeamScore[Team0])
+	fmt.Printf("│ 左右方：%4d分            │\n", game.TeamScore[Team1])
 	fmt.Printf("│ 已完成：%d/25轮          │\n", game.TrickCount)
 	fmt.Println("└──────────────────────────┘")
 }
@@ -38,11 +38,11 @@ func DisplayScore(game *Game) {
 // DisplayTableLayout shows the table with player positions
 func DisplayTableLayout(game *Game) {
 	fmt.Println()
-	fmt.Println("              北(AI)")
+	fmt.Println("              上(AI)")
 	fmt.Println("            ┌──────┐")
-	fmt.Println("  西(AI) ──┤  桌面  ├── 东(AI)")
+	fmt.Println("  左(AI) ──┤  桌面  ├── 右(AI)")
 	fmt.Println("            └──────┘")
-	fmt.Println("              南(你)")
+	fmt.Println("              下(你)")
 }
 
 // DisplayWelcome shows the welcome message

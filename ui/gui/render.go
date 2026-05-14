@@ -172,11 +172,11 @@ func (g *GUI) drawCenter(screen *ebiten.Image, view baseui.TableView) {
 		key string
 		x   int
 		y   int
-	}{{"北(AI)", 250, 160}, {"西(AI)", 176, 222}, {"东(AI)", 388, 222}, {"南(你)", 250, 286}}
+	}{{"上(AI)", 250, 160}, {"左(AI)", 176, 222}, {"右(AI)", 388, 222}, {"下(你)", 250, 286}}
 	for _, p := range positions {
 		cards := view.CurrentTrick[p.key]
 		for i, c := range cards {
-			g.drawCardWithAlpha(screen, p.x+i*22, p.y, c, false, 1)
+			g.drawCardWithAlpha(screen, p.x+i*12, p.y, c, false, 1)
 		}
 	}
 	showBottom := len(view.BottomCards) > 0 && (view.Phase == baseui.PhaseDiscard || view.Phase == baseui.PhaseHandResult)
@@ -229,8 +229,8 @@ func (g *GUI) southSlots(cards []baseui.CardView, selected map[int]bool, bidding
 		return nil
 	}
 
-	const withinSuitGap = 20
-	const betweenSuitGap = 30
+	const withinSuitGap = 10
+	const betweenSuitGap = 15
 
 	// Calculate total width for centering the entire hand
 	totalWidth := CardW
@@ -247,7 +247,7 @@ func (g *GUI) southSlots(cards []baseui.CardView, selected map[int]bool, bidding
 		startX = SouthHandX
 	}
 
-	y := 308
+	y := 340
 	var slots []southSlot
 
 	for pos, idx := range ordered {

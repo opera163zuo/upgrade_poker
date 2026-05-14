@@ -6,17 +6,17 @@ import "fmt"
 type PlayerPosition int
 
 const (
-	PositionSouth PlayerPosition = iota // 南 (human)
-	PositionWest                        // 西 (AI)
-	PositionNorth                       // 北 (AI)
-	PositionEast                        // 东 (AI)
+	PositionSouth PlayerPosition = iota // 下 (human/你)
+	PositionWest                        // 左 (AI)
+	PositionNorth                       // 上 (AI)
+	PositionEast                        // 右 (AI)
 )
 
 var positionNames = map[PlayerPosition]string{
-	PositionSouth: "南(你)",
-	PositionWest:  "西(AI)",
-	PositionNorth: "北(AI)",
-	PositionEast:  "东(AI)",
+	PositionSouth: "下(你)",
+	PositionWest:  "左(AI)",
+	PositionNorth: "上(AI)",
+	PositionEast:  "右(AI)",
 }
 
 func (p PlayerPosition) String() string {
