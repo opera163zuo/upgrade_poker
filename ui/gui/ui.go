@@ -41,6 +41,9 @@ func (g *GUI) Init() error {
 	if err := EnsureImagesLoaded(); err != nil {
 		// 牌图加载失败不阻断，会降级到矢量绘制
 	}
+	if err := EnsureSuitIconsLoaded(); err != nil {
+		// 花色图标加载失败不阻断，会回退到文字渲染
+	}
 	return nil
 }
 

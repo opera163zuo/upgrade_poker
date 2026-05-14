@@ -119,15 +119,15 @@ func (g *GUI) drawInfoBar(screen *ebiten.Image, view baseui.TableView, selected 
 	y += cellH + gap
 
 	// ── Cell 2: 主花色 ──
-	suitText := view.BidderSuitSymbol
-	if suitText == "" {
-		suitText = "—"
+	suitSymbol := view.BidderSuitSymbol
+	if suitSymbol == "" {
+		suitSymbol = "—"
 	}
 	suitColor := blackText
-	if suitText == "♦" || suitText == "♥" {
+	if suitSymbol == "♦" || suitSymbol == "♥" {
 		suitColor = redText
 	}
-	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, suitText, suitColor, whiteBg, blackBorder)
+	g.drawSuitStatusCell(screen, boxX, y, cellW, cellH, suitSymbol, suitColor, whiteBg, blackBorder)
 	y += cellH + gap
 
 	// ── Cell 3: 级牌 / 己家态 ──
@@ -1111,4 +1111,76 @@ func (g *GUI) biddingRaisedCards(view baseui.TableView) map[int]bool {
 		}
 	}
 	return result
+}
+
+// drawStatusCellWithIcon 绘制带图标的状态格（图标居左，文字居右，或反之）
+// 适用于花色单元格：将 Unicode 花色字符替换为图标
+func (g *GUI) drawStatusCellWithIcon(screen *ebiten.Image, x, y, w, h int,
+	label string, textColor, fill, border color.Color, icon *ebiten.Image) {
+
+	resetFillRect(screen, x, y, w, h, fill)
+	resetStrokeRect(screen, x, y, w, h, 1, border)
+
+	if icon != nil {
+		// 绘制图标：左侧居中
+		iconPad := g.sc.PXAbsolute(4)
+		iconW := g.sc.PXAbsolute(20) // 缩放图标到合理尺寸
+		iconH := g.sc.PXAbsolute(20)
+		if iconW > w-iconPad*2 {
+			iconW = w - iconPad*2
+		}
+		if iconH > h {
+			iconH = h
+		}
+		iconX := x + iconPad
+		iconY := y + (h-iconH)/2
+
+		// 缩放图标并定位
+		op := &ebiten.DrawImageOptions{}
+		srcW := float64(icon.Bounds().Dx())
+		srcH := float64(icon.Bounds().Dy())
+		op.GeoM.Scale(float64(iconW)/srcW, float64(iconH)/srcH)
+		op.GeoM.Translate(float64(iconX), float64(iconY))
+		screen.DrawImage(icon, op)
+	} else {
+		// 无条件绘制底色时，用文字回退
+		textX := x + g.sc.PXAbsolute(5)
+		textY := y + h/2 + int(g.sc.FontSize()*0.33)
+		g.physText(screen, label, textX, textY, textColor)
+	}
+}
+
+// drawSuitStatusCell 花色状态格：优先绘制图标，回退到文字
+func (g *GUI) drawSuitStatusCell(screen *ebiten.Image, x, y, w, h int,
+	suitSymbol string, textColor, fill, border color.Color) {
+
+	resetFillRect(screen, x, y, w, h, fill)
+	resetStrokeRect(screen, x, y, w, h, 1, border)
+
+	// 尝试加载花色图标
+	icon := SuitIcon(suitSymbol)
+	if icon != nil {
+		// 图标居中绘制
+		iconSize := g.sc.PXAbsolute(22)
+		if iconSize > h-4 {
+			iconSize = h - 4
+		}
+		if iconSize > w-8 {
+			iconSize = w - 8
+		}
+		iconX := x + (w-iconSize)/2
+		iconY := y + (h-iconSize)/2
+
+		op := &ebiten.DrawImageOptions{}
+		srcW := float64(icon.Bounds().Dx())
+		srcH := float64(icon.Bounds().Dy())
+		op.GeoM.Scale(float64(iconSize)/srcW, float64(iconSize)/srcH)
+		op.GeoM.Translate(float64(iconX), float64(iconY))
+		screen.DrawImage(icon, op)
+	} else {
+		// 回退到文字
+		textX := x + g.sc.PXAbsolute(5)
+		textY := y + h/2 + int(g.sc.FontSize()*0.33)
+		g.physText(screen, suitSymbol, textX, textY, textColor)
+	}
 }

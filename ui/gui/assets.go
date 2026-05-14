@@ -235,7 +235,7 @@ func uiFontFace() font.Face {
 	uiFontOnce.Do(func() {
 		// 优先加载项目自带字体
 		dir := assetDir()
-		fontPath := filepath.Join(dir, "fonts", "wqy-microhei.ttc")
+		fontPath := filepath.Join(dir, "fonts", "wqy-microhei.ttf")
 		if f := loadFont(fontPath); f != nil {
 			uiFont = f
 			return
@@ -253,7 +253,7 @@ func uiFontFace() font.Face {
 			sysPaths = []string{
 				"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
 				"/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-				"/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+				"/usr/share/fonts/truetype/wqy/wqy-microhei.ttf",
 			}
 		}
 		for _, p := range sysPaths {
@@ -281,7 +281,7 @@ func NewFontFaceForScale(sc ScaleCtx) font.Face {
 	}
 
 	dir := assetDir()
-	fontPath := filepath.Join(dir, "fonts", "wqy-microhei.ttc")
+	fontPath := filepath.Join(dir, "fonts", "wqy-microhei.ttf")
 	f := loadFontAtSize(fontPath, fsize, fdpi)
 	if f != nil {
 		currFontSize = fsize
@@ -303,7 +303,7 @@ func NewFontFaceForScale(sc ScaleCtx) font.Face {
 		sysPaths = []string{
 			"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
 			"/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-			"/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+			"/usr/share/fonts/truetype/wqy/wqy-microhei.ttf",
 		}
 	}
 	for _, p := range sysPaths {
@@ -444,4 +444,64 @@ func FreeImages() {
 	cardPhysCacheMu.Lock()
 	cardPhysCache = nil
 	cardPhysCacheMu.Unlock()
+}
+
+// ----- 花色图标缓存 ---------------------------------------------------------
+
+var (
+	suitIcons        map[string]*ebiten.Image
+	suitIconsLoaded  bool
+)
+
+// EnsureSuitIconsLoaded 加载花色图标（从 assets/icons/ 目录）
+func EnsureSuitIconsLoaded() error {
+	if suitIconsLoaded {
+		return nil
+	}
+	dir := assetDir()
+	iconDir := filepath.Join(dir, "icons")
+	suitIcons = make(map[string]*ebiten.Image)
+
+	// 花色图标文件名映射
+	iconFiles := map[string]string{
+		"♠": "spade.png",
+		"♥": "heart.png",
+		"♦": "diamond.png",
+		"♣": "club.png",
+		"无主":  "joker_small.png",
+		"🃏": "joker_big.png",
+	}
+	for suitName, fileName := range iconFiles {
+		path := filepath.Join(iconDir, fileName)
+		img, err := loadImage(path)
+		if err != nil {
+			continue // 图标缺失时静默跳过
+		}
+		suitIcons[suitName] = img
+	}
+	suitIconsLoaded = true
+	return nil
+}
+
+// SuitIcon 返回指定花色名称的图标，若不存在则返回 nil
+func SuitIcon(suitName string) *ebiten.Image {
+	if !suitIconsLoaded {
+		EnsureSuitIconsLoaded()
+	}
+	if suitIcons == nil {
+		return nil
+	}
+	return suitIcons[suitName]
+}
+
+// SuitIconSize 返回 suitIcons 中第一个图标的尺寸，用于布局计算
+func SuitIconSize() (w, h int) {
+	if !suitIconsLoaded {
+		EnsureSuitIconsLoaded()
+	}
+	for _, img := range suitIcons {
+		b := img.Bounds()
+		return b.Dx(), b.Dy()
+	}
+	return 20, 20
 }
