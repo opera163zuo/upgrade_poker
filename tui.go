@@ -514,67 +514,93 @@ func (t *TUI) draw() {
 	t.screen.Show()
 }
 
-// drawStatus draws the top status bar
+// drawStatus draws the top status bar (Plan C: 5-box status panel)
 func (t *TUI) drawStatus() {
 	g := t.game
-	level := g.DealerLevel()
-	opponentTeam := g.OpponentTeam()
-	opponentLevel := g.Level[opponentTeam]
 
-	var trumpStr string
-	if g.TrumpSuit == SuitJoker {
-		trumpStr = "无主"
-	} else {
-		trumpStr = g.TrumpSuit.Symbol() + "主"
-	}
-
-	// Background bar
+	// Background bar for row 0
 	bgStyle := tcell.StyleDefault.Reverse(true)
 	for x := 0; x < t.width; x++ {
 		t.screen.SetContent(x, 0, ' ', nil, bgStyle)
 	}
 
-	// Highlight style for values
-	valStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Reverse(true).Bold(true)
-
-	// Left side: title + dealer + levels
-	t.drawStringW(" 升级(拖拉机)  庄家:", 1, 0, bgStyle)
-	x := 1 + runewidth.StringWidth(" 升级(拖拉机)  庄家:")
-	t.drawStringW(formatPosition(g.Dealer), x, 0, valStyle)
-	x += runewidth.StringWidth(formatPosition(g.Dealer))
-	t.drawStringW(" 庄打", x, 0, bgStyle)
-	x += runewidth.StringWidth(" 庄打")
-	t.drawStringW(LevelDisplayName(level), x, 0, valStyle)
-	x += runewidth.StringWidth(LevelDisplayName(level))
-	t.drawStringW(" 闲打", x, 0, bgStyle)
-	x += runewidth.StringWidth(" 闲打")
-	t.drawStringW(LevelDisplayName(opponentLevel), x, 0, valStyle)
-
-	// Right side: trump, score
-	opponentName := formatTeam(opponentTeam)
-	scoreStr := fmt.Sprintf("%d分", g.TeamScore[opponentTeam])
-
-	rightParts := []struct {
-		text  string
-		style tcell.Style
-	}{
-		{trumpStr, valStyle},
-		{" " + opponentName + "(闲):", bgStyle},
-		{scoreStr, valStyle},
+	// --- Box 1: Bidder Direction ---
+	box1Style := tcell.StyleDefault.Reverse(true).Bold(true)
+	bidderDir := "🔄"
+	if g.CurrentBid != nil {
+		switch g.bidder {
+		case PositionEast:
+			bidderDir = "右"
+		case PositionSouth:
+			bidderDir = "下"
+		case PositionWest:
+			bidderDir = "左"
+		case PositionNorth:
+			bidderDir = "上"
+		}
 	}
-
-	// Calculate total display width
-	totalW := 0
-	for _, p := range rightParts {
-		totalW += runewidth.StringWidth(p.text)
+	box1Text := "🡆" + bidderDir
+	// Highlight if bidder is on our team
+	isMyTeamBidder := PlayerTeam(g.bidder) == Team0
+	if isMyTeamBidder && g.CurrentBid != nil {
+		box1Style = tcell.StyleDefault.Foreground(tcell.ColorRed).Reverse(true).Bold(true)
 	}
+	t.drawStringW(box1Text, 1, 0, box1Style)
+	x := 1 + runewidth.StringWidth(box1Text)
 
-	// Draw right-aligned
-	rx := t.width - totalW - 1
-	for _, p := range rightParts {
-		t.drawStringW(p.text, rx, 0, p.style)
-		rx += runewidth.StringWidth(p.text)
+	// --- Box 2: Trump Suit ---
+	x += 1 // gap
+	var trumpSymbol string
+	if g.TrumpSuit == SuitJoker {
+		trumpSymbol = "无主"
+	} else {
+		trumpSymbol = g.TrumpSuit.Symbol()
 	}
+	trumpStyle := tcell.StyleDefault.Reverse(true).Bold(true)
+	if g.TrumpSuit == SuitHeart || g.TrumpSuit == SuitDiamond {
+		trumpStyle = tcell.StyleDefault.Foreground(tcell.ColorRed).Reverse(true).Bold(true)
+	}
+	t.drawStringW(" "+trumpSymbol+" ", x, 0, trumpStyle)
+	x += runewidth.StringWidth(" "+trumpSymbol+" ")
+
+	// --- Box 3: Level (级牌) ---
+	x += 1 // gap
+	level := g.DealerLevel()
+	levelStr := LevelDisplayName(level)
+	levelPrefix := ""
+	levelColor := tcell.ColorBlue
+	if isMyTeamBidder && PlayerTeam(g.Dealer) == Team0 {
+		levelPrefix = "己家"
+		levelColor = tcell.ColorRed
+	}
+	levelBoxText := levelPrefix + levelStr
+	levelStyle := tcell.StyleDefault.Foreground(levelColor).Reverse(true).Bold(true)
+	t.drawStringW(levelBoxText+" ", x, 0, levelStyle)
+	x += runewidth.StringWidth(levelBoxText + " ")
+
+	// --- Box 4: Dealer Status (敌家态) ---
+	x += 1 // gap
+	isMyTeamDealer := PlayerTeam(g.Dealer) == Team0
+	var dealerStatus string
+	var dealerColor tcell.Color
+	if isMyTeamDealer {
+		dealerStatus = "己家" + levelStr
+		dealerColor = tcell.ColorBlue
+	} else {
+		dealerStatus = "敌家" + levelStr
+		dealerColor = tcell.ColorRed
+	}
+	dealerStyle := tcell.StyleDefault.Foreground(dealerColor).Reverse(true).Bold(true)
+	t.drawStringW(dealerStatus+" ", x, 0, dealerStyle)
+	x += runewidth.StringWidth(dealerStatus + " ")
+
+	// --- Box 5: Score (得分 - always non-dealer) ---
+	x += 1 // gap
+	opponentTeam := g.OpponentTeam()
+	score := g.TeamScore[opponentTeam]
+	scoreText := fmt.Sprintf("得分%d", score)
+	scoreStyle := tcell.StyleDefault.Foreground(tcell.ColorRed).Reverse(true).Bold(true)
+	t.drawStringW(scoreText, x, 0, scoreStyle)
 }
 
 // drawStringW draws a string respecting display width for positioning
