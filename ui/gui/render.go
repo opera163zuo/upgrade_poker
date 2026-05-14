@@ -110,9 +110,9 @@ func (g *GUI) drawInfoBar(screen *ebiten.Image, view baseui.TableView, selected 
 	blackText := color.RGBA{0x00, 0x00, 0x00, 0xff}
 
 	// ── Cell 1: 叫主方位 ──
-	bidderText := "🡆" + view.BidderDirection
+	bidderText := "→" + view.BidderDirection
 	b1Color := blackText
-	if view.IsMyTeamBidder && view.BidderDirection != "🔄" {
+	if view.IsMyTeamBidder && view.BidderDirection != "---" {
 		b1Color = redText
 	}
 	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, bidderText, b1Color, whiteBg, blackBorder)

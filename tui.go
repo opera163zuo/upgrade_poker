@@ -526,20 +526,25 @@ func (t *TUI) drawStatus() {
 
 	// --- Box 1: Bidder Direction ---
 	box1Style := tcell.StyleDefault.Reverse(true).Bold(true)
-	bidderDir := "🔄"
+	var arrDir, bidderDir string
+	bidderDir = "---"
 	if g.CurrentBid != nil {
 		switch g.bidder {
 		case PositionEast:
+			arrDir = "→"
 			bidderDir = "右"
 		case PositionSouth:
+			arrDir = "↓"
 			bidderDir = "下"
 		case PositionWest:
+			arrDir = "←"
 			bidderDir = "左"
 		case PositionNorth:
+			arrDir = "↑"
 			bidderDir = "上"
 		}
 	}
-	box1Text := "🡆" + bidderDir
+	box1Text := arrDir + bidderDir
 	// Highlight if bidder is on our team
 	isMyTeamBidder := PlayerTeam(g.bidder) == Team0
 	if isMyTeamBidder && g.CurrentBid != nil {

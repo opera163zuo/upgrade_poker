@@ -97,7 +97,7 @@ type TableView struct {
 	DealCounts        [4]int
 	HintCardIdx       []int
 	CanHint           bool
-	BidderDirection   string // short name: 右/左/上/下 (or 🔄 if no bidder)
+	BidderDirection   string // short name: 右/左/上/下 (or --- if no bidder)
 	BidderSuitSymbol  string // trump suit symbol: ♦/♥/♠/♣/无主
 	IsMyTeamBidder    bool   // bidder is on Team0 (my team)
 	IsMyTeamDealer    bool   // dealer is on Team0 (my team)

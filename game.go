@@ -895,7 +895,7 @@ func (g *Game) UISnapshot() baseui.TableView {
 				view.BidderDirection = "上"
 			}
 		} else {
-			view.BidderDirection = "🔄"
+			view.BidderDirection = "---"
 		}
 	}
 	if g.TrumpSuit == SuitJoker {
