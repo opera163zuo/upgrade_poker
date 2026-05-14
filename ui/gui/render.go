@@ -97,10 +97,10 @@ func (g *GUI) drawInfoBar(screen *ebiten.Image, view baseui.TableView, selected 
 	baseX, baseY := g.sc.PX(RefInfoBarX), g.sc.PX(RefInfoBarY)
 	pad := g.sc.PXAbsolute(8)
 	cellW := g.sc.PXAbsolute(RefInfoBarW) - pad*2 // 单元格宽 = 面板宽 - 左右内边距
-	cellH := g.sc.PXAbsolute(26)                     // 单元格高
-	gap := g.sc.PXAbsolute(4)
+	cellH := g.sc.PXAbsolute(24)                     // 单元格高
+	gap := g.sc.PXAbsolute(3)
 	boxX := baseX + pad
-	y := baseY + g.sc.PXAbsolute(5) // 距面板顶 5px
+	y := baseY + g.sc.PXAbsolute(4) // 距面板顶 4px
 
 	// 原版状态格颜色
 	whiteBg := color.RGBA{0xff, 0xff, 0xff, 0xff}
@@ -169,8 +169,8 @@ func (g *GUI) drawInfoBar(screen *ebiten.Image, view baseui.TableView, selected 
 		g.statusLine(view, selected))
 
 	g.physText(screen, line2,
-		baseX+g.sc.PXAbsolute(6),
-		y+g.sc.PXAbsolute(10),
+		baseX+g.sc.PXAbsolute(5),
+		y+g.sc.PXAbsolute(8),
 		color.RGBA{0x33, 0x33, 0x33, 0xff})
 }
 
@@ -181,8 +181,8 @@ func (g *GUI) drawOldStatusBox(screen *ebiten.Image, x, y, w, h int,
 	resetFillRect(screen, x, y, w, h, fill)
 	resetStrokeRect(screen, x, y, w, h, 1, border)
 
-	textX := x + g.sc.PXAbsolute(6)
-	textY := y + h/2 + int(g.sc.FontSize()*0.3)
+	textX := x + g.sc.PXAbsolute(5)
+	textY := y + h/2 + int(g.sc.FontSize()*0.33)
 	g.physText(screen, label, textX, textY, textColor)
 }
 
