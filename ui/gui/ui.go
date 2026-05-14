@@ -8,8 +8,11 @@ import (
 )
 
 type GUI struct {
-	st        *state
-	mouseDown bool
+	st         *state
+	mouseDown  bool
+	scaleX     float64
+	scaleY     float64
+	offscreen  *ebiten.Image
 }
 
 func New() *GUI {
@@ -90,6 +93,11 @@ func (g *GUI) Update() error {
 	return nil
 }
 
+// Layout returns the actual window dimensions so Ebiten does NOT apply its
+// built-in bilinear upscale from the logical 640×480 buffer. Instead we
+// handle the pixel-perfect (nearest-neighbor) upscale ourselves in Draw().
 func (g *GUI) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return LogicalWidth, LogicalHeight
+	g.scaleX = float64(outsideWidth) / float64(LogicalWidth)
+	g.scaleY = float64(outsideHeight) / float64(LogicalHeight)
+	return outsideWidth, outsideHeight
 }

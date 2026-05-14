@@ -20,7 +20,10 @@ func (g *GUI) updateInput() {
 		return
 	}
 	g.mouseDown = true
-	x, y := ebiten.CursorPosition()
+	// Convert cursor from physical window coords to logical (640x480) coords
+	physX, physY := ebiten.CursorPosition()
+	x := int(float64(physX) / g.scaleX)
+	y := int(float64(physY) / g.scaleY)
 
 	g.st.mu.RLock()
 	buttonRects := append([]buttonRect(nil), g.st.buttonRects...)

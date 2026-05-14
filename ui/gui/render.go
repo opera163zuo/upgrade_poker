@@ -49,8 +49,22 @@ func (g *GUI) drawTextBadge(dst *ebiten.Image, s string, x, y, padX, padY int, f
 	g.drawText(dst, s, x, y, textColor)
 }
 
+// Draw renders the game to an offscreen at the logical 640×480 resolution,
+// then blits it to the actual screen with nearest-neighbor filtering for
+// pixel-perfect upscaling. This eliminates the blur caused by Ebiten's
+// default bilinear upscale when Layout returns a smaller logical size.
 func (g *GUI) Draw(screen *ebiten.Image) {
-	screen.Fill(bgColor)
+	screenW := screen.Bounds().Dx()
+	screenH := screen.Bounds().Dy()
+
+	// Create or reuse offscreen at logical resolution
+	if g.offscreen == nil || g.offscreen.Bounds().Dx() != LogicalWidth || g.offscreen.Bounds().Dy() != LogicalHeight {
+		g.offscreen = ebiten.NewImage(LogicalWidth, LogicalHeight)
+	}
+	offscreen := g.offscreen
+
+	// --- Render everything to offscreen at LOGICAL coordinates ---
+	offscreen.Fill(bgColor)
 	g.st.mu.Lock()
 	view := g.st.view
 	g.st.cardRects = nil
@@ -64,20 +78,28 @@ func (g *GUI) Draw(screen *ebiten.Image) {
 	}
 	g.st.mu.Unlock()
 
-	vector.DrawFilledRect(screen, float32(TableX), float32(TableY), float32(TableW), float32(TableH), tableColor, false)
-	vector.StrokeRect(screen, float32(TableX), float32(TableY), float32(TableW), float32(TableH), 2, outlineColor, false)
-	vector.DrawFilledRect(screen, float32(InfoBarX), float32(InfoBarY), float32(InfoBarW), float32(InfoBarH), color.RGBA{0x12, 0x2a, 0x1d, 0xff}, false)
-	vector.StrokeRect(screen, float32(InfoBarX), float32(InfoBarY), float32(InfoBarW), float32(InfoBarH), 1, outlineColor, false)
-	g.drawInfoBar(screen, view, selected)
+	vector.DrawFilledRect(offscreen, float32(TableX), float32(TableY), float32(TableW), float32(TableH), tableColor, false)
+	vector.StrokeRect(offscreen, float32(TableX), float32(TableY), float32(TableW), float32(TableH), 2, outlineColor, false)
+	vector.DrawFilledRect(offscreen, float32(InfoBarX), float32(InfoBarY), float32(InfoBarW), float32(InfoBarH), color.RGBA{0x12, 0x2a, 0x1d, 0xff}, false)
+	vector.StrokeRect(offscreen, float32(InfoBarX), float32(InfoBarY), float32(InfoBarW), float32(InfoBarH), 1, outlineColor, false)
+	g.drawInfoBar(offscreen, view, selected)
 
-	g.drawNorth(screen, view)
-	g.drawWest(screen, view)
-	g.drawEast(screen, view)
-	g.drawCenter(screen, view)
-	g.drawSouth(screen, view, selected)
-	g.drawMenuBar(screen, view)
-	g.drawButtons(screen, view, selected)
-	g.drawOverlay(screen, view, selected)
+	g.drawNorth(offscreen, view)
+	g.drawWest(offscreen, view)
+	g.drawEast(offscreen, view)
+	g.drawCenter(offscreen, view)
+	g.drawSouth(offscreen, view, selected)
+	g.drawMenuBar(offscreen, view)
+	g.drawButtons(offscreen, view, selected)
+	g.drawOverlay(offscreen, view, selected)
+
+	// --- Blit offscreen to screen with nearest-neighbor (pixel-perfect) ---
+	op := &ebiten.DrawImageOptions{}
+	scaleX := float64(screenW) / float64(LogicalWidth)
+	scaleY := float64(screenH) / float64(LogicalHeight)
+	op.GeoM.Scale(scaleX, scaleY)
+	op.Filter = ebiten.FilterNearest
+	screen.DrawImage(offscreen, op)
 }
 
 func (g *GUI) drawInfoBar(screen *ebiten.Image, view baseui.TableView, selected map[int]bool) {
@@ -684,6 +706,12 @@ func (g *GUI) drawOverlay(screen *ebiten.Image, view baseui.TableView, selected 
 	}
 }
 
+// drawCardWithAlpha draws a card (hi-res image when available) to the given
+// target. For card images we use FilterLinear so the hi-res 500×726 source
+// is smoothly downscaled to the logical card size (53×72). This offscreen is
+// later upscaled to the physical window using FilterNearest (pixel-perfect),
+// so the final result retains sharp card edges while showing smooth internal
+// detail.
 func (g *GUI) drawCardWithAlpha(screen *ebiten.Image, x, y int, c baseui.CardView, selected bool, alpha float32) {
 	if c.IsTractor {
 		vector.DrawFilledRect(screen, float32(x-2), float32(y-4), float32(CardW+4), 16, tractorColor, false)
@@ -692,6 +720,7 @@ func (g *GUI) drawCardWithAlpha(screen *ebiten.Image, x, y int, c baseui.CardVie
 		img := CardFaceImage(c.SuitNum, c.RankNum)
 		if img != nil {
 			op := &ebiten.DrawImageOptions{}
+			op.Filter = ebiten.FilterLinear
 			op.GeoM.Scale(float64(CardW)/float64(img.Bounds().Dx()), float64(CardH)/float64(img.Bounds().Dy()))
 			op.GeoM.Translate(float64(x), float64(y))
 			op.ColorScale.ScaleAlpha(alpha)
@@ -713,6 +742,7 @@ func (g *GUI) drawCardWithAlpha(screen *ebiten.Image, x, y int, c baseui.CardVie
 		img := CardBackImage(0)
 		if img != nil {
 			op := &ebiten.DrawImageOptions{}
+			op.Filter = ebiten.FilterLinear
 			op.GeoM.Scale(float64(CardW)/float64(img.Bounds().Dx()), float64(CardH)/float64(img.Bounds().Dy()))
 			op.GeoM.Translate(float64(x), float64(y))
 			op.ColorScale.ScaleAlpha(alpha)
