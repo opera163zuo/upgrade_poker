@@ -172,11 +172,15 @@ func (g *GUI) drawCenter(screen *ebiten.Image, view baseui.TableView) {
 		key string
 		x   int
 		y   int
-	}{{"上(AI)", 250, 160}, {"左(AI)", 176, 222}, {"右(AI)", 388, 222}, {"下(你)", 250, 286}}
+	}{{"上(AI)", 250, 150},
+		{"左(AI)", 176, 210},
+		{"右(AI)", 388, 210},
+		{"下(你)", 250, 268},
+	}
 	for _, p := range positions {
 		cards := view.CurrentTrick[p.key]
 		for i, c := range cards {
-			g.drawCardWithAlpha(screen, p.x+i*12, p.y, c, false, 1)
+			g.drawCardWithAlpha(screen, p.x+i*15, p.y, c, false, 1)
 		}
 	}
 	showBottom := len(view.BottomCards) > 0 && (view.Phase == baseui.PhaseDiscard || view.Phase == baseui.PhaseHandResult)
@@ -193,7 +197,7 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 	if view.Phase == baseui.PhaseBidding {
 		biddingRaise = g.biddingRaisedCards(view)
 	}
-	g.drawText(screen, pv.Name, 236, 350, color.White)
+	g.drawText(screen, pv.Name, 236, 328, color.White)
 	var slots []southSlot
 	slots = g.southSlots(pv.HandCards, selected, biddingRaise, view.TrumpSuit)
 	g.drawSouthGroupBackdrops(screen, pv.HandCards, slots, view.TrumpSuit)
@@ -229,8 +233,8 @@ func (g *GUI) southSlots(cards []baseui.CardView, selected map[int]bool, bidding
 		return nil
 	}
 
-	const withinSuitGap = 10
-	const betweenSuitGap = 15
+	const withinSuitGap = 15		// was 10, 1.5x
+	const betweenSuitGap = 22		// was 15, 1.5x
 
 	// Calculate total width for centering the entire hand
 	totalWidth := CardW
@@ -247,7 +251,7 @@ func (g *GUI) southSlots(cards []baseui.CardView, selected map[int]bool, bidding
 		startX = SouthHandX
 	}
 
-	y := 340
+	y := 335				// was 340, moved up for taller cards
 	var slots []southSlot
 
 	for pos, idx := range ordered {
@@ -264,7 +268,7 @@ func (g *GUI) southSlots(cards []baseui.CardView, selected map[int]bool, bidding
 
 		slotY := y
 		if selected[idx] || biddingRaise[idx] {
-			slotY -= 12
+			slotY -= 18				// was 12, 1.5x
 		}
 
 		slots = append(slots, southSlot{idx: idx, x: slotX, y: slotY, w: CardW, h: CardH})

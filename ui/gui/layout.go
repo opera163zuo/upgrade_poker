@@ -13,23 +13,23 @@ const (
 	TableY   = 74
 	TableW   = 590
 	TableH   = 346
-	CardW    = 35
-	CardH    = 48
+	CardW    = 53		// was 35, 1.5x
+	CardH    = 72		// was 48, 1.5x
 
 	SouthHandX   = 32
 	SouthHandY   = 396
-	SouthHandGap = 9
+	SouthHandGap = 14	// was 9, 1.5x
 	NorthHandY   = 86
-	NorthHandGap = 6
+	NorthHandGap = 9	// was 6, 1.5x
 	WestHandX    = 16
 	WestHandY    = 175
-	WestHandGap  = 2
+	WestHandGap  = 3	// was 2, 1.5x
 	EastHandX    = 554
 	EastHandY    = 223
-	EastHandGap  = 2
+	EastHandGap  = 3	// was 2, 1.5x
 	BottomX      = 230
 	BottomY      = 186
-	BottomGap    = 7
+	BottomGap    = 11	// was 7, ~1.5x
 
 	ActionBtnW = 96
 	ActionBtnH = 28
