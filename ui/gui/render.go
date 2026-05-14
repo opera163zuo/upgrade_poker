@@ -345,24 +345,36 @@ func (g *GUI) drawSouthGroupBackdrops(screen *ebiten.Image, cards []baseui.CardV
 			fill = trumpGroupColor
 			labelColor = hiliteColor
 		}
+		isTrumpSuit := suit == trumpSuit
 		vector.DrawFilledRect(screen, float32(minX-26), float32(y+22), float32(maxX-minX+34), 22, fill, false)
-		g.drawText(screen, suitLabel(suit, suit == trumpSuit), minX-20, y+38, labelColor)
+		// Trump label on the RIGHT of the group, non-trump labels on the LEFT
+		var labelX int
+		if isTrumpSuit {
+			labelX = maxX + 4
+		} else {
+			labelX = minX - 20
+		}
+		g.drawText(screen, bidSuitSymbol(suit, isTrumpSuit), labelX, y+38, labelColor)
 	}
 }
 
-func suitLabel(suit string, isTrump bool) string {
+// bidSuitSymbol returns the display symbol for a suit group label.
+// For trump: returns "主牌".
+// For non-trump: returns Chinese suit name characters (not Unicode symbols)
+// to ensure the text renders correctly even when the font lacks Unicode suit glyphs.
+func bidSuitSymbol(suit string, isTrump bool) string {
 	if isTrump {
 		return "主牌"
 	}
 	switch suit {
 	case "黑桃":
-		return "♠"
+		return "黑"
 	case "红心":
-		return "♥"
+		return "红"
 	case "方块":
-		return "♦"
+		return "方"
 	case "梅花":
-		return "♣"
+		return "梅"
 	case "王":
 		return "王"
 	default:
@@ -506,7 +518,7 @@ func (g *GUI) drawBidSuitButton(screen *ebiten.Image, x, y int, choice baseui.Bi
 	vector.StrokeRect(screen, float32(x), float32(y), float32(BidSymbolSize), float32(BidSymbolSize), 2, stroke, false)
 	symbol := choice.Suit
 	if choice.Suit != "王" {
-		symbol = suitLabel(choice.Suit, false)
+		symbol = bidSuitSymbol(choice.Suit, false)
 	}
 	g.drawText(screen, symbol, x+10, y+21, textColor)
 	g.st.mu.Lock()
