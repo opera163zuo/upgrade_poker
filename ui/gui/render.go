@@ -484,7 +484,7 @@ func (g *GUI) drawSouthGroupBackdrops(screen *ebiten.Image,
 		bgY := y + g.sc.PXAbsolute(22)
 		resetFillRect(screen, minX-bgPadX, bgY, maxX-minX+bgPadW, bgH, fill)
 
-		// 花色标签
+		// 花色标签 —— 使用图标显示
 		var labelX int
 		if isTrumpSuit {
 			labelX = maxX + g.sc.PXAbsolute(4)
@@ -492,7 +492,28 @@ func (g *GUI) drawSouthGroupBackdrops(screen *ebiten.Image,
 			labelX = minX - g.sc.PXAbsolute(20)
 		}
 		labelY := bgY + g.sc.PXAbsolute(16)
-		g.physText(screen, bidSuitSymbol(suit, isTrumpSuit), labelX, labelY, labelColor)
+		// 尝试使用花色图标
+		sym := suitDisplaySymbol(suit)
+		icon := SuitIcon(sym)
+		if icon != nil {
+			iconSize := g.sc.PXAbsolute(16)
+			if iconSize > bgH-4 {
+				iconSize = bgH - 4
+			}
+			iconDrawX := labelX
+			iconDrawY := labelY - iconSize/2
+			op := &ebiten.DrawImageOptions{}
+			srcW := float64(icon.Bounds().Dx())
+			srcH := float64(icon.Bounds().Dy())
+			if srcW > 0 && srcH > 0 {
+				op.GeoM.Scale(float64(iconSize)/srcW, float64(iconSize)/srcH)
+			}
+			op.GeoM.Translate(float64(iconDrawX), float64(iconDrawY))
+			screen.DrawImage(icon, op)
+		} else {
+			// 回退到文字
+			g.physText(screen, bidSuitSymbol(suit, isTrumpSuit), labelX, labelY, labelColor)
+		}
 	}
 }
 
@@ -515,6 +536,40 @@ func bidSuitSymbol(suit string, isTrump bool) string {
 		return suit
 	}
 }
+
+// suitDisplaySymbol 将中文花色名转为显示用的花色符号
+func suitDisplaySymbol(suit string) string {
+	switch suit {
+	case "黑桃":
+		return "♠"
+	case "红心":
+		return "♥"
+	case "方块":
+		return "♦"
+	case "梅花":
+		return "♣"
+	case "王":
+		return "🃏"
+	default:
+		return suit
+	}
+}
+
+func bidSuitToIconSymbol(suit string) string {
+	switch suit {
+	case "黑桃":
+		return "♠"
+	case "红心":
+		return "♥"
+	case "方块":
+		return "♦"
+	case "梅花":
+		return "♣"
+	default:
+		return ""
+	}
+}
+
 
 // ----- 菜单栏 -------------------------------------------------------------
 
@@ -779,26 +834,47 @@ func (g *GUI) drawBidSuitButtonPhys(screen *ebiten.Image, x, y, size int,
 
 	fill := color.RGBA{0xcf, 0xcf, 0xcf, 0xff}
 	stroke := color.RGBA{0x55, 0x5d, 0x66, 0xff}
-	var textColor color.Color = color.RGBA{0x5a, 0x5a, 0x5a, 0xff}
 	if enabled {
 		fill = color.RGBA{0xf2, 0xf2, 0xf2, 0xff}
-		textColor = color.Black
 	}
 	if selected {
 		fill = color.RGBA{0x4d, 0x8f, 0xff, 0xff}
 		stroke = hiliteColor
-		textColor = color.White
 	}
 	resetFillRect(screen, x, y, size, size, fill)
 	resetStrokeRect(screen, x, y, size, size, 2, stroke)
 
-	symbol := choice.Suit
-	if choice.Suit != "王" {
-		symbol = bidSuitSymbol(choice.Suit, false)
+	// 优先使用花色图标显示
+	sym := bidSuitToIconSymbol(choice.Suit)
+	if sym != "" {
+		icon := SuitIcon(sym)
+		if icon != nil {
+			iconPad := g.sc.PXAbsolute(3)
+			iconSize := size - iconPad*2
+			if iconSize < 4 {
+				iconSize = size
+			}
+			iconX := x + (size-iconSize)/2
+			iconY := y + (size-iconSize)/2
+			op := &ebiten.DrawImageOptions{}
+			srcW := float64(icon.Bounds().Dx())
+			srcH := float64(icon.Bounds().Dy())
+			if srcW > 0 && srcH > 0 {
+				op.GeoM.Scale(float64(iconSize)/srcW, float64(iconSize)/srcH)
+			}
+			op.GeoM.Translate(float64(iconX), float64(iconY))
+			screen.DrawImage(icon, op)
+		}
+	} else {
+		// 回退到文字
+		symbol := choice.Suit
+		if symbol == "" {
+			symbol = "?"
+		}
+		textOffset := g.sc.PXAbsolute(10)
+		textY := y + size/2 + int(g.sc.FontSize()*0.3)
+		g.physText(screen, symbol, x+textOffset, textY, color.RGBA{0x5a, 0x5a, 0x5a, 0xff})
 	}
-	textOffset := g.sc.PXAbsolute(10)
-	textY := y + size/2 + int(g.sc.FontSize()*0.3)
-	g.physText(screen, symbol, x+textOffset, textY, textColor)
 
 	g.st.mu.Lock()
 	g.st.buttonRects = append(g.st.buttonRects, buttonRect{
