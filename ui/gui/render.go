@@ -10,8 +10,17 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+
 	baseui "github.com/smallnest/upgrade_poker/ui"
 )
+
+// ════════════════════════════════════════════════════════════════════════════
+// 方案二：渲染实现
+//
+// 所有坐标均为物理像素。
+// 字体按物理 DPI/字号创建，无低分辨率栅格化后放大的问题。
+// 牌图从物理尺寸缓存直接绘制，不每帧缩放。
+// ════════════════════════════════════════════════════════════════════════════
 
 var (
 	bgColor             = color.RGBA{0x16, 0x5f, 0x3b, 0xff}
@@ -28,6 +37,49 @@ var (
 	secondaryButtonFill = color.RGBA{0x85, 0x9f, 0xa3, 0xff}
 )
 
+// ----- 绘制辅助函数：基于 ScaleCtx 的几何绘制 -----------------------------
+
+// resetFillRect 在游戏区域绘制填充矩形
+func resetFillRect(screen *ebiten.Image, x, y, w, h int, clr color.Color) {
+	vector.DrawFilledRect(screen, float32(x), float32(y), float32(w), float32(h), clr, false)
+}
+
+// resetStrokeRect 在游戏区域绘制描边矩形
+func resetStrokeRect(screen *ebiten.Image, x, y, w, h int, strokeWidth float32, clr color.Color) {
+	vector.StrokeRect(screen, float32(x), float32(y), float32(w), float32(h), strokeWidth, clr, false)
+}
+
+// physText 绘制文字到物理像素坐标
+// 使用当前缩放上下文创建对应尺寸的临时字体面
+func (g *GUI) physText(dst *ebiten.Image, s string, x, y int, clr color.Color) {
+	fnt := NewFontFaceForScale(g.sc)
+	if fnt == nil {
+		fnt = uiFontFace()
+	}
+	text.Draw(dst, s, fnt, x, y, clr)
+}
+
+// physTextBadge 绘制带背景的 badge
+func (g *GUI) physTextBadge(dst *ebiten.Image, s string, x, y, padX, padY int,
+	fill color.Color, border color.Color, textColor color.Color) {
+
+	charW := int(g.sc.FontSize() * 0.55)
+	if charW < 4 {
+		charW = 4
+	}
+	lineH := int(g.sc.FontSize() * 1.2)
+	if lineH < 10 {
+		lineH = 10
+	}
+	width := len([]rune(s))*charW + padX*2
+	height := lineH + padY*2
+	top := y - lineH/2 - padY
+	resetFillRect(dst, x-padX, top, width, height, fill)
+	resetStrokeRect(dst, x-padX, top, width, height, 1, border)
+	g.physText(dst, s, x, y, textColor)
+}
+
+// southSlot 南家牌槽位（物理坐标）
 type southSlot struct {
 	idx int
 	x   int
@@ -36,93 +88,74 @@ type southSlot struct {
 	h   int
 }
 
-func (g *GUI) drawText(dst *ebiten.Image, s string, x, y int, clr color.Color) {
-	text.Draw(dst, s, uiFontFace(), x, y, clr)
-}
-
-func (g *GUI) drawTextBadge(dst *ebiten.Image, s string, x, y, padX, padY int, fill color.Color, border color.Color, textColor color.Color) {
-	width := len([]rune(s))*8 + padX*2
-	height := 12 + padY*2
-	top := y - 10 - padY
-	vector.DrawFilledRect(dst, float32(x-padX), float32(top), float32(width), float32(height), fill, false)
-	vector.StrokeRect(dst, float32(x-padX), float32(top), float32(width), float32(height), 1, border, false)
-	g.drawText(dst, s, x, y, textColor)
-}
-
-// Draw renders the game to an offscreen at the logical 640×480 resolution,
-// then blits it to the actual screen with nearest-neighbor filtering for
-// pixel-perfect upscaling. This eliminates the blur caused by Ebiten's
-// default bilinear upscale when Layout returns a smaller logical size.
-func (g *GUI) Draw(screen *ebiten.Image) {
-	screenW := screen.Bounds().Dx()
-	screenH := screen.Bounds().Dy()
-
-	// Create or reuse offscreen at logical resolution
-	if g.offscreen == nil || g.offscreen.Bounds().Dx() != LogicalWidth || g.offscreen.Bounds().Dy() != LogicalHeight {
-		g.offscreen = ebiten.NewImage(LogicalWidth, LogicalHeight)
-	}
-	offscreen := g.offscreen
-
-	// --- Render everything to offscreen at LOGICAL coordinates ---
-	offscreen.Fill(bgColor)
-	g.st.mu.Lock()
-	view := g.st.view
-	g.st.cardRects = nil
-	g.st.buttonRects = nil
-	selected := map[int]bool{}
-	for k, v := range g.st.selected {
-		selected[k] = v
-	}
-	if view.Phase == baseui.PhaseBidding {
-		g.ensureBidSelectionLocked()
-	}
-	g.st.mu.Unlock()
-
-	vector.DrawFilledRect(offscreen, float32(TableX), float32(TableY), float32(TableW), float32(TableH), tableColor, false)
-	vector.StrokeRect(offscreen, float32(TableX), float32(TableY), float32(TableW), float32(TableH), 2, outlineColor, false)
-	vector.DrawFilledRect(offscreen, float32(InfoBarX), float32(InfoBarY), float32(InfoBarW), float32(InfoBarH), color.RGBA{0x12, 0x2a, 0x1d, 0xff}, false)
-	vector.StrokeRect(offscreen, float32(InfoBarX), float32(InfoBarY), float32(InfoBarW), float32(InfoBarH), 1, outlineColor, false)
-	g.drawInfoBar(offscreen, view, selected)
-
-	g.drawNorth(offscreen, view)
-	g.drawWest(offscreen, view)
-	g.drawEast(offscreen, view)
-	g.drawCenter(offscreen, view)
-	g.drawSouth(offscreen, view, selected)
-	g.drawMenuBar(offscreen, view)
-	g.drawButtons(offscreen, view, selected)
-	g.drawOverlay(offscreen, view, selected)
-
-	// --- Blit offscreen to screen with nearest-neighbor (pixel-perfect) ---
-	op := &ebiten.DrawImageOptions{}
-	scaleX := float64(screenW) / float64(LogicalWidth)
-	scaleY := float64(screenH) / float64(LogicalHeight)
-	op.GeoM.Scale(scaleX, scaleY)
-	op.Filter = ebiten.FilterNearest
-	screen.DrawImage(offscreen, op)
-}
+// ----- 信息栏 -------------------------------------------------------------
 
 func (g *GUI) drawInfoBar(screen *ebiten.Image, view baseui.TableView, selected map[int]bool) {
-	leftW := 246
-	midW := 176
-	rightW := 144
-	g.drawStatusBox(screen, InfoBarX+6, InfoBarY+6, leftW, 30, color.RGBA{0x17, 0x35, 0x26, 0xff}, fmt.Sprintf("庄家 %s · 主花色 %s", view.Dealer, view.TrumpSuit), color.White)
-	g.drawLevelPair(screen, InfoBarX+16+leftW, InfoBarY+6, midW, 30, view.DealerLevel, view.OpponentLevel)
-	g.drawStatusBox(screen, InfoBarX+26+leftW+midW, InfoBarY+6, rightW, 30, color.RGBA{0x18, 0x24, 0x34, 0xff}, fmt.Sprintf("得分 %d : %d", view.TeamScore[0], view.TeamScore[1]), hiliteColor)
-	line2 := fmt.Sprintf("第 %d / 25 轮 · 手牌 南%d 西%d 北%d 东%d · %s", view.TrickCount+1, view.Players[0].HandCount, view.Players[1].HandCount, view.Players[2].HandCount, view.Players[3].HandCount, g.statusLine(view, selected))
-	g.drawTextBadge(screen, line2, InfoBarX+12, InfoBarY+41, 8, 4, color.RGBA{0x0e, 0x1a, 0x12, 0xcc}, color.RGBA{0x6b, 0x88, 0x73, 0xff}, color.RGBA{0xd5, 0xe5, 0xd5, 0xff})
+	baseX, baseY := g.sc.PX(RefInfoBarX), g.sc.PX(RefInfoBarY)
+	padX := g.sc.PXAbsolute(6)
+	padY := g.sc.PXAbsolute(6)
+
+	leftW := g.sc.PXAbsolute(246)
+	midW := g.sc.PXAbsolute(176)
+	rightW := g.sc.PXAbsolute(144)
+	h := g.sc.PXAbsolute(30)
+
+	// 庄家/主花色
+	leftX := baseX + padX
+	g.drawStatusBoxPhys(screen, leftX, baseY+padY, leftW, h,
+		color.RGBA{0x17, 0x35, 0x26, 0xff},
+		fmt.Sprintf("庄家 %s · 主花色 %s", view.Dealer, view.TrumpSuit), color.White)
+
+	// 等级
+	g.drawLevelPairPhys(screen, leftX+padX+leftW, baseY+padY, midW, h,
+		view.DealerLevel, view.OpponentLevel)
+
+	// 得分
+	rightX := leftX + padX + leftW + padX + midW
+	g.drawStatusBoxPhys(screen, rightX, baseY+padY, rightW, h,
+		color.RGBA{0x18, 0x24, 0x34, 0xff},
+		fmt.Sprintf("得分 %d : %d", view.TeamScore[0], view.TeamScore[1]), hiliteColor)
+
+	// 第二行状态
+	line2 := fmt.Sprintf("第 %d / 25 轮 · 手牌 南%d 西%d 北%d 东%d · %s",
+		view.TrickCount+1,
+		view.Players[0].HandCount, view.Players[1].HandCount,
+		view.Players[2].HandCount, view.Players[3].HandCount,
+		g.statusLine(view, selected))
+
+	badgePadX := g.sc.PXAbsolute(8)
+	badgePadY := g.sc.PXAbsolute(4)
+	g.physTextBadge(screen, line2,
+		g.sc.PX(RefInfoBarX)+g.sc.PXAbsolute(12),
+		g.sc.PX(RefInfoBarY)+g.sc.PXAbsolute(41),
+		badgePadX, badgePadY,
+		color.RGBA{0x0e, 0x1a, 0x12, 0xcc},
+		color.RGBA{0x6b, 0x88, 0x73, 0xff},
+		color.RGBA{0xd5, 0xe5, 0xd5, 0xff})
 }
 
-func (g *GUI) drawStatusBox(screen *ebiten.Image, x, y, w, h int, fill color.Color, label string, textColor color.Color) {
-	vector.DrawFilledRect(screen, float32(x), float32(y), float32(w), float32(h), fill, false)
-	vector.StrokeRect(screen, float32(x), float32(y), float32(w), float32(h), 1, color.RGBA{0xe9, 0xe9, 0xe9, 0xff}, false)
-	g.drawText(screen, label, x+10, y+h/2+4, textColor)
+func (g *GUI) drawStatusBoxPhys(screen *ebiten.Image, x, y, w, h int,
+	fill color.Color, label string, textColor color.Color) {
+
+	resetFillRect(screen, x, y, w, h, fill)
+	resetStrokeRect(screen, x, y, w, h, 1,
+		color.RGBA{0xe9, 0xe9, 0xe9, 0xff})
+	textOffset := g.sc.PXAbsolute(10)
+	textY := y + h/2 + int(g.sc.FontSize()*0.3)
+	g.physText(screen, label, x+textOffset, textY, textColor)
 }
 
-func (g *GUI) drawLevelPair(screen *ebiten.Image, x, y, w, h int, ourLevel, oppLevel string) {
-	half := (w - 10) / 2
-	g.drawStatusBox(screen, x, y, half, h, color.RGBA{0xf0, 0xf4, 0xfc, 0xff}, "我方 "+ourLevel, color.RGBA{0x2d, 0x65, 0xc4, 0xff})
-	g.drawStatusBox(screen, x+half+10, y, half, h, color.RGBA{0xfb, 0xf1, 0xf1, 0xff}, "敌方 "+oppLevel, color.RGBA{0xc8, 0x39, 0x39, 0xff})
+func (g *GUI) drawLevelPairPhys(screen *ebiten.Image, x, y, w, h int,
+	ourLevel, oppLevel string) {
+
+	gap := g.sc.PXAbsolute(10)
+	half := (w - gap) / 2
+	g.drawStatusBoxPhys(screen, x, y, half, h,
+		color.RGBA{0xf0, 0xf4, 0xfc, 0xff},
+		"我方 "+ourLevel, color.RGBA{0x2d, 0x65, 0xc4, 0xff})
+	g.drawStatusBoxPhys(screen, x+half+gap, y, half, h,
+		color.RGBA{0xfb, 0xf1, 0xf1, 0xff},
+		"敌方 "+oppLevel, color.RGBA{0xc8, 0x39, 0x39, 0xff})
 }
 
 func (g *GUI) statusLine(view baseui.TableView, selected map[int]bool) string {
@@ -130,7 +163,7 @@ func (g *GUI) statusLine(view baseui.TableView, selected map[int]bool) string {
 	case baseui.PhaseDealing:
 		return "发牌中... 若拿到级牌可立即亮主"
 	case baseui.PhaseBidding:
-		return "请选择亮主花色，然后点击“继续”确认 / P 不亮"
+		return "请选择亮主花色，然后点击【继续】确认 / P 不亮"
 	case baseui.PhaseDiscard:
 		return fmt.Sprintf("请垫底牌（已选 %d/8） / Enter 扣底", len(selected))
 	case baseui.PhasePlaying:
@@ -150,34 +183,40 @@ func (g *GUI) statusLine(view baseui.TableView, selected map[int]bool) string {
 	return strings.ReplaceAll(strings.TrimSpace(view.Message), "\n", " ")
 }
 
+// ----- 四方牌面 -----------------------------------------------------------
+
 func (g *GUI) drawNorth(screen *ebiten.Image, view baseui.TableView) {
 	pv := view.Players[2]
-	g.drawSeatLabel(screen, pv, 272, 68)
+	labelX, labelY := g.sc.PX(272), g.sc.PX(68)
+	g.drawSeatLabelPhys(screen, pv, labelX, labelY)
 	for i := 0; i < pv.HandCount && i < 12; i++ {
-		x := 440 - NorthHandGap*i
-		g.drawCardWithAlpha(screen, x, NorthHandY, baseui.CardView{Label: "", FaceUp: false}, false, 1)
+		x := g.sc.PX(440) - g.sc.PXAbsolute(RefNorthHandGap)*i
+		g.drawCardPhys(screen, x, g.sc.PX(RefNorthHandY),
+			baseui.CardView{Label: "", FaceUp: false}, false, 1)
 	}
 }
 
 func (g *GUI) drawWest(screen *ebiten.Image, view baseui.TableView) {
 	pv := view.Players[1]
-	g.drawSeatLabel(screen, pv, 10, 138)
+	g.drawSeatLabelPhys(screen, pv, g.sc.PX(10), g.sc.PX(138))
 	for i := 0; i < pv.HandCount && i < 10; i++ {
-		y := WestHandY + WestHandGap*i
-		g.drawCardWithAlpha(screen, WestHandX, y, baseui.CardView{FaceUp: false}, false, 1)
+		y := g.sc.PX(RefWestHandY) + g.sc.PXAbsolute(RefWestHandGap)*i
+		g.drawCardPhys(screen, g.sc.PX(RefWestHandX), y,
+			baseui.CardView{FaceUp: false}, false, 1)
 	}
 }
 
 func (g *GUI) drawEast(screen *ebiten.Image, view baseui.TableView) {
 	pv := view.Players[3]
-	g.drawSeatLabel(screen, pv, 520, 138)
+	g.drawSeatLabelPhys(screen, pv, g.sc.PX(520), g.sc.PX(138))
 	for i := 0; i < pv.HandCount && i < 10; i++ {
-		y := EastHandY - EastHandGap*i
-		g.drawCardWithAlpha(screen, EastHandX, y, baseui.CardView{FaceUp: false}, false, 1)
+		y := g.sc.PX(RefEastHandY) - g.sc.PXAbsolute(RefEastHandGap)*i
+		g.drawCardPhys(screen, g.sc.PX(RefEastHandX), y,
+			baseui.CardView{FaceUp: false}, false, 1)
 	}
 }
 
-func (g *GUI) drawSeatLabel(screen *ebiten.Image, pv baseui.PlayerView, x, y int) {
+func (g *GUI) drawSeatLabelPhys(screen *ebiten.Image, pv baseui.PlayerView, x, y int) {
 	label := pv.Name
 	if pv.IsDealer {
 		label += " ★"
@@ -186,7 +225,12 @@ func (g *GUI) drawSeatLabel(screen *ebiten.Image, pv baseui.PlayerView, x, y int
 		dots := strings.Repeat(".", int(time.Now().UnixMilli()/350)%3+1)
 		label += " 思考中" + dots
 	}
-	g.drawTextBadge(screen, label, x+8, y, 8, 3, color.RGBA{0x0d, 0x17, 0x22, 0xc8}, color.RGBA{0x9f, 0xb8, 0xc4, 0xff}, color.White)
+	padX := g.sc.PXAbsolute(8)
+	padY := g.sc.PXAbsolute(3)
+	g.physTextBadge(screen, label, x+padX, y, padX, padY,
+		color.RGBA{0x0d, 0x17, 0x22, 0xc8},
+		color.RGBA{0x9f, 0xb8, 0xc4, 0xff},
+		color.White)
 }
 
 func (g *GUI) drawCenter(screen *ebiten.Image, view baseui.TableView) {
@@ -194,21 +238,27 @@ func (g *GUI) drawCenter(screen *ebiten.Image, view baseui.TableView) {
 		key string
 		x   int
 		y   int
-	}{{"上(AI)", 250, 150},
-		{"左(AI)", 176, 210},
-		{"右(AI)", 388, 210},
-		{"下(你)", 250, 268},
+	}{
+		{"上(AI)", g.sc.PX(250), g.sc.PX(150)},
+		{"左(AI)", g.sc.PX(176), g.sc.PX(210)},
+		{"右(AI)", g.sc.PX(388), g.sc.PX(210)},
+		{"下(你)", g.sc.PX(250), g.sc.PX(268)},
 	}
+	gap := g.sc.PXAbsolute(15)
 	for _, p := range positions {
 		cards := view.CurrentTrick[p.key]
 		for i, c := range cards {
-			g.drawCardWithAlpha(screen, p.x+i*15, p.y, c, false, 1)
+			g.drawCardPhys(screen, p.x+i*gap, p.y, c, false, 1)
 		}
 	}
-	showBottom := len(view.BottomCards) > 0 && (view.Phase == baseui.PhaseDiscard || view.Phase == baseui.PhaseHandResult)
+
+	showBottom := len(view.BottomCards) > 0 &&
+		(view.Phase == baseui.PhaseDiscard || view.Phase == baseui.PhaseHandResult)
 	if showBottom {
 		for i, c := range view.BottomCards {
-			g.drawCardWithAlpha(screen, BottomX+i*BottomGap, BottomY, c, false, 1)
+			g.drawCardPhys(screen,
+				g.sc.PX(RefBottomX)+i*g.sc.PXAbsolute(RefBottomGap),
+				g.sc.PX(RefBottomY), c, false, 1)
 		}
 	}
 }
@@ -219,34 +269,34 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 	if view.Phase == baseui.PhaseBidding {
 		biddingRaise = g.biddingRaisedCards(view)
 	}
-	g.drawText(screen, pv.Name, 236, 328, color.White)
+	g.physText(screen, pv.Name, g.sc.PX(236), g.sc.PX(328), color.White)
+
 	var slots []southSlot
 	slots = g.southSlots(pv.HandCards, selected, biddingRaise, view.TrumpSuit)
 	g.drawSouthGroupBackdrops(screen, pv.HandCards, slots, view.TrumpSuit)
 	for _, slot := range slots {
 		c := pv.HandCards[slot.idx]
-		g.drawCardWithAlpha(screen, slot.x, slot.y, c, selected[slot.idx] || biddingRaise[slot.idx], 1)
+		g.drawCardPhys(screen, slot.x, slot.y, c, selected[slot.idx] || biddingRaise[slot.idx], 1)
 	}
-	rects := make([]rect, len(slots))
+	rects := make([]Rect, len(slots))
 	for i, slot := range slots {
-		rects[i] = rect{x: slot.x, y: slot.y, w: slot.w, h: slot.h}
+		rects[i] = Rect{X: slot.x, Y: slot.y, W: slot.w, H: slot.h}
 	}
 	g.st.mu.Lock()
 	g.st.cardRects = rects
 	g.st.mu.Unlock()
 }
 
-func (g *GUI) southSlots(cards []baseui.CardView, selected map[int]bool, biddingRaise map[int]bool, trumpSuit string) []southSlot {
-	order := g.suitRowOrder(cards, trumpSuit)
+func (g *GUI) southSlots(cards []baseui.CardView, selected map[int]bool,
+	biddingRaise map[int]bool, trumpSuit string) []southSlot {
 
-	// Group card indices by effective suit
+	order := g.suitRowOrder(cards, trumpSuit)
 	suitIndices := map[string][]int{}
 	for idx, c := range cards {
 		key := effectiveSuit(c)
 		suitIndices[key] = append(suitIndices[key], idx)
 	}
 
-	// Build flat ordered indices: trump group first, then other suits
 	var ordered []int
 	for _, suit := range order {
 		ordered = append(ordered, suitIndices[suit]...)
@@ -255,45 +305,52 @@ func (g *GUI) southSlots(cards []baseui.CardView, selected map[int]bool, bidding
 		return nil
 	}
 
-	const withinSuitGap = 15		// was 10, 1.5x
-	const betweenSuitGap = 22		// was 15, 1.5x
+	withinSuitGap := g.sc.PXAbsolute(RefSouthHandGap)
+	betweenSuitGap := g.sc.PXAbsolute(22) // was RefSouthHandGap + 8
 
-	// Calculate total width for centering the entire hand
-	totalWidth := CardW
+	physCardW, _ := g.sc.CardPhysSize()
+
+	// 计算总宽以居中
+	totalWidth := physCardW
 	for i := 1; i < len(ordered); i++ {
-		g := withinSuitGap
+		gap := withinSuitGap
 		if effectiveSuit(cards[ordered[i-1]]) != effectiveSuit(cards[ordered[i]]) {
-			g = betweenSuitGap
+			gap = betweenSuitGap
 		}
-		totalWidth += g
+		totalWidth += gap
 	}
 
-	startX := TableX + (TableW-totalWidth)/2
-	if startX < SouthHandX {
-		startX = SouthHandX
+	tableX := g.sc.PX(RefTableX)
+	tableW := g.sc.PXAbsolute(RefTableW)
+	startX := tableX + (tableW-totalWidth)/2
+	southHandX := g.sc.PX(RefSouthHandX)
+	if startX < southHandX {
+		startX = southHandX
+	} else if startX+totalWidth > tableX+tableW {
+		startX = tableX + tableW - totalWidth
 	}
 
-	y := 335				// was 340, moved up for taller cards
+	y := g.sc.PX(RefSouthHandY)
+	_, physCardH := g.sc.CardPhysSize()
+
 	var slots []southSlot
-
 	for pos, idx := range ordered {
 		var slotX int
 		if pos == 0 {
 			slotX = startX
 		} else {
-			g := withinSuitGap
+			gap := withinSuitGap
 			if effectiveSuit(cards[ordered[pos-1]]) != effectiveSuit(cards[idx]) {
-				g = betweenSuitGap
+				gap = betweenSuitGap
 			}
-			slotX = slots[pos-1].x + g
+			slotX = slots[pos-1].x + gap
 		}
-
 		slotY := y
 		if selected[idx] || biddingRaise[idx] {
-			slotY -= 18				// was 12, 1.5x
+			slotY -= g.sc.PXAbsolute(18)
 		}
-
-		slots = append(slots, southSlot{idx: idx, x: slotX, y: slotY, w: CardW, h: CardH})
+		slots = append(slots, southSlot{idx: idx, x: slotX, y: slotY,
+			w: physCardW, h: physCardH})
 	}
 
 	sort.Slice(slots, func(i, j int) bool { return slots[i].idx < slots[j].idx })
@@ -317,15 +374,12 @@ func (g *GUI) suitRowOrder(cards []baseui.CardView, trumpSuit string) []string {
 		seen[s] = true
 		base = append(base, s)
 	}
-	// Non-trump suits in fixed order: 方块→梅花→红桃→黑桃
 	for _, s := range []string{"方块", "梅花", "红心", "黑桃"} {
 		if s != trumpSuit {
 			push(s)
 		}
 	}
-	// Trump suit goes last (rightmost)
 	push(trumpSuit)
-	// Any remaining suits not yet seen (e.g. 王 in no-trump mode)
 	for _, c := range cards {
 		key := c.EffectiveSuit
 		if key == "" {
@@ -336,7 +390,9 @@ func (g *GUI) suitRowOrder(cards []baseui.CardView, trumpSuit string) []string {
 	return base
 }
 
-func (g *GUI) drawSouthGroupBackdrops(screen *ebiten.Image, cards []baseui.CardView, slots []southSlot, trumpSuit string) {
+func (g *GUI) drawSouthGroupBackdrops(screen *ebiten.Image,
+	cards []baseui.CardView, slots []southSlot, trumpSuit string) {
+
 	if len(slots) == 0 {
 		return
 	}
@@ -348,18 +404,20 @@ func (g *GUI) drawSouthGroupBackdrops(screen *ebiten.Image, cards []baseui.CardV
 		}
 		bySuit[key] = append(bySuit[key], slot)
 	}
+
+	physCardW, _ := g.sc.CardPhysSize()
 	for _, suit := range g.suitRowOrder(cards, trumpSuit) {
 		group := bySuit[suit]
 		if len(group) == 0 {
 			continue
 		}
-		minX, maxX, y := group[0].x, group[0].x+CardW, group[0].y
+		minX, maxX, y := group[0].x, group[0].x+physCardW, group[0].y
 		for _, slot := range group[1:] {
 			if slot.x < minX {
 				minX = slot.x
 			}
-			if slot.x+CardW > maxX {
-				maxX = slot.x + CardW
+			if slot.x+physCardW > maxX {
+				maxX = slot.x + physCardW
 			}
 			if slot.y < y {
 				y = slot.y
@@ -372,22 +430,26 @@ func (g *GUI) drawSouthGroupBackdrops(screen *ebiten.Image, cards []baseui.CardV
 			labelColor = hiliteColor
 		}
 		isTrumpSuit := suit == trumpSuit
-		vector.DrawFilledRect(screen, float32(minX-26), float32(y+22), float32(maxX-minX+34), 22, fill, false)
-		// Trump label on the RIGHT of the group, non-trump labels on the LEFT
+
+		// 背景条
+		bgPadX := g.sc.PXAbsolute(26)
+		bgPadW := g.sc.PXAbsolute(34)
+		bgH := g.sc.PXAbsolute(22)
+		bgY := y + g.sc.PXAbsolute(22)
+		resetFillRect(screen, minX-bgPadX, bgY, maxX-minX+bgPadW, bgH, fill)
+
+		// 花色标签
 		var labelX int
 		if isTrumpSuit {
-			labelX = maxX + 4
+			labelX = maxX + g.sc.PXAbsolute(4)
 		} else {
-			labelX = minX - 20
+			labelX = minX - g.sc.PXAbsolute(20)
 		}
-		g.drawText(screen, bidSuitSymbol(suit, isTrumpSuit), labelX, y+38, labelColor)
+		labelY := bgY + g.sc.PXAbsolute(16)
+		g.physText(screen, bidSuitSymbol(suit, isTrumpSuit), labelX, labelY, labelColor)
 	}
 }
 
-// bidSuitSymbol returns the display symbol for a suit group label.
-// For trump: returns "主牌".
-// For non-trump: returns Chinese suit name characters (not Unicode symbols)
-// to ensure the text renders correctly even when the font lacks Unicode suit glyphs.
 func bidSuitSymbol(suit string, isTrump bool) string {
 	if isTrump {
 		return "主牌"
@@ -408,65 +470,106 @@ func bidSuitSymbol(suit string, isTrump bool) string {
 	}
 }
 
+// ----- 菜单栏 -------------------------------------------------------------
+
 func (g *GUI) drawMenuBar(screen *ebiten.Image, view baseui.TableView) {
-	vector.DrawFilledRect(screen, 0, 0, LogicalWidth, MenuBarH, color.RGBA{0xe7, 0xe7, 0xe7, 0xff}, false)
-	vector.StrokeRect(screen, 0, 0, LogicalWidth, MenuBarH, 1, color.RGBA{0x88, 0x88, 0x88, 0xff}, false)
+	menuH := g.sc.PXAbsolute(RefMenuBarH)
+	resetFillRect(screen, g.sc.PX(0), g.sc.PX(0),
+		g.sc.PXAbsolute(RefWidth), menuH,
+		color.RGBA{0xe7, 0xe7, 0xe7, 0xff})
+	resetStrokeRect(screen, g.sc.PX(0), g.sc.PX(0),
+		g.sc.PXAbsolute(RefWidth), menuH, 1,
+		color.RGBA{0x88, 0x88, 0x88, 0xff})
+
 	startEnabled := view.Phase == baseui.PhaseWelcome || view.Phase == baseui.PhaseGameOver
 	restartEnabled := view.Phase != baseui.PhaseWelcome
-	g.drawTopMenuButton(screen, 8, 3, 92, 18, "开始游戏", baseui.UIAction{Type: baseui.ActionStart}, startEnabled)
-	g.drawTopMenuButton(screen, 106, 3, 92, 18, "重新开始", baseui.UIAction{Type: baseui.ActionRestart}, restartEnabled)
+
+	g.drawTopMenuButton(screen, g.sc.PX(8), g.sc.PX(3),
+		g.sc.PXAbsolute(92), g.sc.PXAbsolute(18),
+		"开始游戏", baseui.UIAction{Type: baseui.ActionStart}, startEnabled)
+	g.drawTopMenuButton(screen, g.sc.PX(106), g.sc.PX(3),
+		g.sc.PXAbsolute(92), g.sc.PXAbsolute(18),
+		"重新开始", baseui.UIAction{Type: baseui.ActionRestart}, restartEnabled)
 }
 
-func (g *GUI) drawTopMenuButton(screen *ebiten.Image, x, y, w, h int, label string, action baseui.UIAction, enabled bool) {
+func (g *GUI) drawTopMenuButton(screen *ebiten.Image, x, y, w, h int,
+	label string, action baseui.UIAction, enabled bool) {
+
 	fill := color.RGBA{0xff, 0xff, 0xff, 0xff}
 	var textColor color.Color = color.Black
 	if !enabled {
 		fill = color.RGBA{0xd4, 0xd4, 0xd4, 0xff}
 		textColor = color.RGBA{0x66, 0x66, 0x66, 0xff}
 	}
-	vector.DrawFilledRect(screen, float32(x), float32(y), float32(w), float32(h), fill, false)
-	vector.StrokeRect(screen, float32(x), float32(y), float32(w), float32(h), 1, outlineColor, false)
-	g.drawText(screen, label, x+12, y+h/2+4, textColor)
+	resetFillRect(screen, x, y, w, h, fill)
+	resetStrokeRect(screen, x, y, w, h, 1, outlineColor)
+
+	textOffset := g.sc.PXAbsolute(12)
+	textY := y + h/2 + int(g.sc.FontSize()*0.3)
+	g.physText(screen, label, x+textOffset, textY, textColor)
+
 	g.st.mu.Lock()
-	g.st.buttonRects = append(g.st.buttonRects, buttonRect{rect: rect{x: x, y: y, w: w, h: h}, action: action, enabled: enabled})
+	g.st.buttonRects = append(g.st.buttonRects, buttonRect{
+		Rect: Rect{X: x, Y: y, W: w, H: h},
+		action:  action,
+		enabled: enabled,
+	})
 	g.st.mu.Unlock()
 }
+
+// ----- 操作按钮 -----------------------------------------------------------
 
 func (g *GUI) drawButtons(screen *ebiten.Image, view baseui.TableView, selected map[int]bool) {
 	if view.Phase == baseui.PhaseWelcome && len(view.Buttons) > 0 {
 		btn := view.Buttons[0]
-		g.drawActionButton(screen, LogicalWidth/2-120, LogicalHeight/2+60, 240, 50, btn.Label, baseui.UIAction{Type: baseui.ActionType(btn.ID)}, btn.Enabled, false)
+		centerX := g.sc.PX(RefWidth/2) - g.sc.PXAbsolute(120)
+		btnY := g.sc.PX(RefHeight/2) + g.sc.PXAbsolute(60)
+		g.drawActionButtonPhys(screen, centerX, btnY,
+			g.sc.PXAbsolute(240), g.sc.PXAbsolute(50),
+			btn.Label, baseui.UIAction{Type: baseui.ActionType(btn.ID)},
+			btn.Enabled, false)
 		return
 	}
 
 	if view.Phase == baseui.PhaseBidding {
-		g.drawBidButtons(screen, view)
+		g.drawBidButtonsPhys(screen, view)
 		return
 	}
 
-	if view.Phase == baseui.PhasePlaying && view.WaitingForHuman {
-		g.drawActionButton(screen, 120, ActionBtnY, ActionBtnW, ActionBtnH, "提示", baseui.UIAction{Type: baseui.ActionHint}, view.CanHint, true)
-		g.drawActionButton(screen, 226, ActionBtnY, ActionBtnW, ActionBtnH, "出牌", baseui.UIAction{Type: baseui.ActionPlay}, len(selected) > 0, false)
-		g.drawActionButton(screen, 332, ActionBtnY, ActionBtnW, ActionBtnH, "取消", baseui.UIAction{Type: baseui.ActionCancel}, len(selected) > 0, true)
+	btnW := g.sc.PXAbsolute(RefActionBtnW)
+	btnH := g.sc.PXAbsolute(RefActionBtnH)
+	btnY := g.sc.PX(RefActionBtnY)
 
+	if view.Phase == baseui.PhasePlaying && view.WaitingForHuman {
+		g.drawActionButtonPhys(screen, g.sc.PX(120), btnY, btnW, btnH,
+			"提示", baseui.UIAction{Type: baseui.ActionHint}, view.CanHint, true)
+		g.drawActionButtonPhys(screen, g.sc.PX(226), btnY, btnW, btnH,
+			"出牌", baseui.UIAction{Type: baseui.ActionPlay}, len(selected) > 0, false)
+		g.drawActionButtonPhys(screen, g.sc.PX(332), btnY, btnW, btnH,
+			"取消", baseui.UIAction{Type: baseui.ActionCancel}, len(selected) > 0, true)
 	}
 
 	if view.Phase == baseui.PhaseDiscard {
-
-		g.drawActionButton(screen, 254, ActionBtnY, ActionBtnW, ActionBtnH, "扣底", baseui.UIAction{Type: baseui.ActionPlay}, len(selected) == view.DiscardCount, false)
-		g.drawActionButton(screen, 360, ActionBtnY, ActionBtnW, ActionBtnH, "取消", baseui.UIAction{Type: baseui.ActionCancel}, len(selected) > 0, true)
+		g.drawActionButtonPhys(screen, g.sc.PX(254), btnY, btnW, btnH,
+			"扣底", baseui.UIAction{Type: baseui.ActionPlay},
+			len(selected) == view.DiscardCount, false)
+		g.drawActionButtonPhys(screen, g.sc.PX(360), btnY, btnW, btnH,
+			"取消", baseui.UIAction{Type: baseui.ActionCancel},
+			len(selected) > 0, true)
 	}
 
+	// 通用按钮（从 view.Buttons）
 	for i, b := range view.Buttons {
-		x := 430 + i*100
-		if x+ActionBtnW > LogicalWidth {
-			x = 430
+		x := g.sc.PX(430) + i*g.sc.PXAbsolute(100)
+		if x+btnW > g.sc.PXAbsolute(RefWidth) {
+			x = g.sc.PX(430)
 		}
-		g.drawActionButton(screen, x, ActionBtnY, ActionBtnW, ActionBtnH, sanitizeButtonLabel(b.Label), baseui.UIAction{Type: baseui.ActionType(b.ID)}, b.Enabled, false)
+		g.drawActionButtonPhys(screen, x, btnY, btnW, btnH,
+			sanitizeButtonLabel(b.Label),
+			baseui.UIAction{Type: baseui.ActionType(b.ID)},
+			b.Enabled, false)
 	}
 }
-
-
 
 func sanitizeButtonLabel(label string) string {
 	label = strings.TrimSpace(label)
@@ -475,6 +578,37 @@ func sanitizeButtonLabel(label string) string {
 	}
 	return strings.Trim(label, "[]")
 }
+
+func (g *GUI) drawActionButtonPhys(screen *ebiten.Image, x, y, w, h int,
+	label string, action baseui.UIAction, enabled bool, secondary bool) {
+
+	fill := color.RGBA{0xdb, 0xb7, 0x43, 0xff}
+	var textColor color.Color = color.Black
+	if secondary {
+		fill = secondaryButtonFill
+		textColor = color.White
+	}
+	if !enabled {
+		fill = disabledColor
+		textColor = color.RGBA{0xdd, 0xdd, 0xdd, 0xff}
+	}
+	resetFillRect(screen, x, y, w, h, fill)
+	resetStrokeRect(screen, x, y, w, h, 1, outlineColor)
+
+	textOffset := g.sc.PXAbsolute(10)
+	textY := y + h/2 + int(g.sc.FontSize()*0.3)
+	g.physText(screen, label, x+textOffset, textY, textColor)
+
+	g.st.mu.Lock()
+	g.st.buttonRects = append(g.st.buttonRects, buttonRect{
+		Rect: Rect{X: x, Y: y, W: w, H: h},
+		action:  action,
+		enabled: enabled,
+	})
+	g.st.mu.Unlock()
+}
+
+// ----- 亮主面板 -----------------------------------------------------------
 
 func (g *GUI) bidSuitButtons(view baseui.TableView) []baseui.BidChoice {
 	choices := make([]baseui.BidChoice, 0, 4)
@@ -527,7 +661,76 @@ func bidPriority(kind string) int {
 	}
 }
 
-func (g *GUI) drawBidSuitButton(screen *ebiten.Image, x, y int, choice baseui.BidChoice, selected bool, enabled bool) {
+func (g *GUI) drawBidButtonsPhys(screen *ebiten.Image, view baseui.TableView) {
+	panelX := g.sc.PX(RefBidPanelX)
+	panelY := g.sc.PX(RefBidPanelY)
+	panelW := g.sc.PXAbsolute(RefBidPanelW)
+	panelH := g.sc.PXAbsolute(RefBidPanelH)
+
+	resetFillRect(screen, panelX, panelY, panelW, panelH,
+		color.RGBA{0x1e, 0x26, 0x31, 0xf0})
+	resetStrokeRect(screen, panelX, panelY, panelW, panelH, 2, hiliteColor)
+
+	titleX := panelX + g.sc.PXAbsolute(RefBidTitleX)
+	titleY := panelY + g.sc.PXAbsolute(RefBidTitleY)
+	g.physText(screen, "亮主", titleX, titleY, hiliteColor)
+
+	hintX := titleX + g.sc.PXAbsolute(36)
+	g.physText(screen, "选花色后点继续", hintX, titleY, color.White)
+
+	g.st.mu.RLock()
+	selectedKey := g.st.selectedBidChoice
+	g.st.mu.RUnlock()
+
+	available := map[string]baseui.BidChoice{}
+	for _, choice := range g.bidSuitButtons(view) {
+		available[choice.Suit] = choice
+	}
+	order := []string{"黑桃", "红心", "梅花", "方块"}
+
+	symSize := g.sc.PXAbsolute(RefBidSymbolSize)
+	symGap := g.sc.PXAbsolute(RefBidSymbolGap)
+	startX := panelX + g.sc.PXAbsolute(RefBidTitleX)
+	y := panelY + g.sc.PXAbsolute(38)
+
+	for i, suit := range order {
+		choice, ok := available[suit]
+		if !ok {
+			choice = baseui.BidChoice{Type: "", Suit: suit}
+		}
+		x := startX + i*(symSize+symGap)
+		selected := ok && choice.Type+"|"+choice.Suit == selectedKey
+		g.drawBidSuitButtonPhys(screen, x, y, symSize, choice, selected, ok)
+	}
+
+	if special, ok := g.bidSpecialChoice(view); ok {
+		g.drawActionButtonPhys(screen,
+			panelX+g.sc.PXAbsolute(RefBidTitleX),
+			panelY+g.sc.PXAbsolute(76),
+			g.sc.PXAbsolute(76),
+			g.sc.PXAbsolute(26),
+			"无主", baseui.UIAction{Type: baseui.ActionSelectBid,
+				BidType: special.Type, BidSuit: special.Suit},
+			true, special.Type+"|"+special.Suit != selectedKey)
+	}
+
+	btnH := g.sc.PXAbsolute(26)
+	g.drawActionButtonPhys(screen,
+		panelX+panelW-g.sc.PXAbsolute(168),
+		panelY+g.sc.PXAbsolute(76),
+		g.sc.PXAbsolute(RefBidPrimaryBtnW), btnH,
+		"继续", baseui.UIAction{Type: baseui.ActionConfirm},
+		selectedKey != "", false)
+	g.drawActionButtonPhys(screen,
+		panelX+panelW-g.sc.PXAbsolute(84),
+		panelY+g.sc.PXAbsolute(76),
+		g.sc.PXAbsolute(RefBidSecondaryW), btnH,
+		"不亮", baseui.UIAction{Type: baseui.ActionPass}, true, true)
+}
+
+func (g *GUI) drawBidSuitButtonPhys(screen *ebiten.Image, x, y, size int,
+	choice baseui.BidChoice, selected bool, enabled bool) {
+
 	fill := color.RGBA{0xcf, 0xcf, 0xcf, 0xff}
 	stroke := color.RGBA{0x55, 0x5d, 0x66, 0xff}
 	var textColor color.Color = color.RGBA{0x5a, 0x5a, 0x5a, 0xff}
@@ -540,17 +743,280 @@ func (g *GUI) drawBidSuitButton(screen *ebiten.Image, x, y int, choice baseui.Bi
 		stroke = hiliteColor
 		textColor = color.White
 	}
-	vector.DrawFilledRect(screen, float32(x), float32(y), float32(BidSymbolSize), float32(BidSymbolSize), fill, false)
-	vector.StrokeRect(screen, float32(x), float32(y), float32(BidSymbolSize), float32(BidSymbolSize), 2, stroke, false)
+	resetFillRect(screen, x, y, size, size, fill)
+	resetStrokeRect(screen, x, y, size, size, 2, stroke)
+
 	symbol := choice.Suit
 	if choice.Suit != "王" {
 		symbol = bidSuitSymbol(choice.Suit, false)
 	}
-	g.drawText(screen, symbol, x+10, y+17, textColor)
+	textOffset := g.sc.PXAbsolute(10)
+	textY := y + size/2 + int(g.sc.FontSize()*0.3)
+	g.physText(screen, symbol, x+textOffset, textY, textColor)
+
 	g.st.mu.Lock()
-	g.st.buttonRects = append(g.st.buttonRects, buttonRect{rect: rect{x: x, y: y, w: BidSymbolSize, h: BidSymbolSize}, action: baseui.UIAction{Type: baseui.ActionSelectBid, BidType: choice.Type, BidSuit: choice.Suit}, enabled: enabled})
+	g.st.buttonRects = append(g.st.buttonRects, buttonRect{
+		Rect: Rect{X: x, Y: y, W: size, H: size},
+		action:  baseui.UIAction{Type: baseui.ActionSelectBid,
+			BidType: choice.Type, BidSuit: choice.Suit},
+		enabled: enabled,
+	})
 	g.st.mu.Unlock()
 }
+
+// ----- 覆盖层（欢迎/结算/消息提示）----------------------------------------
+
+func (g *GUI) drawOverlay(screen *ebiten.Image, view baseui.TableView, selected map[int]bool) {
+	if view.Phase == baseui.PhaseWelcome {
+		g.drawWelcomeOverlay(screen, view)
+		return
+	}
+
+	if view.Phase == baseui.PhaseWaitTrick && view.TrickWinner != "" {
+		g.drawTrickResultOverlay(screen, view)
+		return
+	}
+
+	if view.Phase == baseui.PhaseHandResult {
+		g.drawHandResultOverlay(screen, view)
+		return
+	}
+
+	if view.Phase == baseui.PhaseDiscard {
+		g.drawDiscardOverlay(screen, view, selected)
+		return
+	}
+
+	if view.Phase == baseui.PhaseDealing {
+		g.drawDealingOverlay(screen)
+		return
+	}
+
+	if view.Message == "" || view.Phase == baseui.PhaseBidding {
+		return
+	}
+	g.drawMessageOverlay(screen, view)
+}
+
+func (g *GUI) drawWelcomeOverlay(screen *ebiten.Image, view baseui.TableView) {
+	msgW := g.sc.PXAbsolute(480)
+	msgH := g.sc.PXAbsolute(190)
+	msgX := g.sc.PX(80)
+	msgY := g.sc.PX(110)
+	resetFillRect(screen, msgX, msgY, msgW, msgH, messageBgColor)
+	resetStrokeRect(screen, msgX, msgY, msgW, msgH, 2, hiliteColor)
+
+	title := "升级（拖拉机）纸牌游戏"
+	subtitle := "两副牌 · 从2开始打 · 4人对战"
+	fontSize := g.sc.FontSize()
+
+	centerText := func(s string, y int) int {
+		charW := int(fontSize * 0.55)
+		if charW < 4 {
+			charW = 4
+		}
+		return g.sc.PX(RefWidth/2) - (charW*len([]rune(s)))/2
+	}
+
+	titleY := msgY + g.sc.PXAbsolute(35)
+	titleX := centerText(title, titleY)
+	g.physText(screen, title, titleX, titleY,
+		color.RGBA{0xff, 0xd6, 0x54, 0xff})
+
+	subY := titleY + g.sc.PXAbsolute(30)
+	subX := centerText(subtitle, subY)
+	g.physText(screen, subtitle, subX, subY, color.White)
+
+	hint := "点击左上角按钮开始游戏"
+	hintY := subY + g.sc.PXAbsolute(75)
+	hintX := centerText(hint, hintY)
+	g.physText(screen, hint, hintX, hintY,
+		color.RGBA{0xaa, 0xcc, 0xaa, 0xff})
+}
+
+func (g *GUI) drawTrickResultOverlay(screen *ebiten.Image, view baseui.TableView) {
+	msgW := g.sc.PXAbsolute(304)
+	msgH := g.sc.PXAbsolute(78)
+	msgX := g.sc.PX(168)
+	msgY := g.sc.PX(172)
+	resetFillRect(screen, msgX, msgY, msgW, msgH, messageBgColor)
+	resetStrokeRect(screen, msgX, msgY, msgW, msgH, 1, hiliteColor)
+
+	winnerX := g.sc.PX(205)
+	winnerY := msgY + g.sc.PXAbsolute(30)
+	g.physText(screen, fmt.Sprintf("本轮赢家：%s", view.TrickWinner),
+		winnerX, winnerY, color.White)
+
+	scoreY := winnerY + g.sc.PXAbsolute(24)
+	g.physText(screen, fmt.Sprintf("本轮得分：%d", view.TrickPoints),
+		g.sc.PX(205), scoreY, hiliteColor)
+}
+
+func (g *GUI) drawHandResultOverlay(screen *ebiten.Image, view baseui.TableView) {
+	msgW := g.sc.PXAbsolute(350)
+	msgH := g.sc.PXAbsolute(132)
+	msgX := g.sc.PX(150)
+	msgY := g.sc.PX(148)
+	resetFillRect(screen, msgX, msgY, msgW, msgH, messageBgColor)
+	resetStrokeRect(screen, msgX, msgY, msgW, msgH, 2, hiliteColor)
+
+	titleX := g.sc.PX(286)
+	titleY := msgY + g.sc.PXAbsolute(28)
+	g.physText(screen, "本局结算", titleX, titleY, hiliteColor)
+
+	lines := strings.Split(view.Message, "\n")
+	for i, line := range lines {
+		g.physText(screen, line,
+			g.sc.PX(176),
+			msgY+g.sc.PXAbsolute(58)+i*g.sc.PXAbsolute(20),
+			color.White)
+	}
+}
+
+func (g *GUI) drawDiscardOverlay(screen *ebiten.Image, view baseui.TableView,
+	selected map[int]bool) {
+
+	msgW := g.sc.PXAbsolute(290)
+	msgH := g.sc.PXAbsolute(38)
+	msgX := g.sc.PX(176)
+	msgY := g.sc.PX(84)
+	resetFillRect(screen, msgX, msgY, msgW, msgH, messageBgColor)
+	resetStrokeRect(screen, msgX, msgY, msgW, msgH, 1, hiliteColor)
+
+	textX := g.sc.PX(205)
+	textY := msgY + g.sc.PXAbsolute(24)
+	g.physText(screen, fmt.Sprintf("请垫底牌（已选 %d/8）", len(selected)),
+		textX, textY, color.White)
+}
+
+func (g *GUI) drawDealingOverlay(screen *ebiten.Image) {
+	msgW := g.sc.PXAbsolute(224)
+	msgH := g.sc.PXAbsolute(38)
+	msgX := g.sc.PX(208)
+	msgY := g.sc.PX(84)
+	resetFillRect(screen, msgX, msgY, msgW, msgH, messageBgColor)
+	resetStrokeRect(screen, msgX, msgY, msgW, msgH, 1, hiliteColor)
+
+	g.physText(screen, "发牌中...",
+		g.sc.PX(286), msgY+g.sc.PXAbsolute(24), color.White)
+}
+
+func (g *GUI) drawMessageOverlay(screen *ebiten.Image, view baseui.TableView) {
+	msgW := g.sc.PXAbsolute(340)
+	msgH := g.sc.PXAbsolute(80)
+	msgX := g.sc.PX(150)
+	msgY := g.sc.PX(170)
+	resetFillRect(screen, msgX, msgY, msgW, msgH, messageBgColor)
+	resetStrokeRect(screen, msgX, msgY, msgW, msgH, 1, hiliteColor)
+
+	lines := strings.Split(view.Message, "\n")
+	for i, line := range lines {
+		g.physText(screen, line,
+			g.sc.PX(170),
+			msgY+g.sc.PXAbsolute(25)+i*g.sc.PXAbsolute(18),
+			color.White)
+	}
+}
+
+// ----- 扑克牌绘制（物理像素）----------------------------------------------
+
+// drawCardPhys 绘制一张牌到物理像素坐标。
+// 使用预缓存的物理尺寸牌图，不进行每帧缩放。
+func (g *GUI) drawCardPhys(screen *ebiten.Image, x, y int, c baseui.CardView,
+	selected bool, alpha float32) {
+
+	if c.IsTractor {
+		barH := g.sc.PXAbsolute(16)
+		resetFillRect(screen, x-g.sc.PXAbsolute(2), y-g.sc.PXAbsolute(4),
+			g.sc.PXAbsolute(RefCardW+4), barH, tractorColor)
+	}
+
+	physW, physH := g.sc.CardPhysSize()
+
+	if IsImageLoaded() && c.FaceUp && c.RankNum > 0 {
+		img := CardFaceImagePhys(c.SuitNum, c.RankNum, physW, physH)
+		if img != nil {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(float64(x), float64(y))
+			op.ColorScale.ScaleAlpha(alpha)
+			screen.DrawImage(img, op)
+
+			stroke := outlineColor
+			width := float32(2)
+			if c.Trump {
+				stroke = color.RGBA{0x51, 0x7a, 0xcf, 0xff}
+			}
+			if selected {
+				stroke = hiliteColor
+				width = 3
+			}
+			resetStrokeRect(screen, x-1, y-1, physW+2, physH+2, width, stroke)
+			return
+		}
+	}
+
+	if IsImageLoaded() && !c.FaceUp {
+		img := CardBackImagePhys(0, physW, physH)
+		if img != nil {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(float64(x), float64(y))
+			op.ColorScale.ScaleAlpha(alpha)
+			screen.DrawImage(img, op)
+			return
+		}
+	}
+
+	// 降级：矢量绘制
+	fill := cardFaceColor
+	if !c.FaceUp {
+		fill = cardBackColor
+	}
+	fill = withAlpha(fill, alpha)
+	resetFillRect(screen, x, y, physW, physH, fill)
+
+	stroke := outlineColor
+	if c.Trump {
+		stroke = color.RGBA{0x51, 0x7a, 0xcf, 0xff}
+	}
+	if selected {
+		stroke = hiliteColor
+	}
+	resetStrokeRect(screen, x, y, physW, physH, 2, stroke)
+
+	if !c.FaceUp {
+		textX := x + physW/2 - g.sc.PXAbsolute(10)
+		textY := y + physH - g.sc.PXAbsolute(20)
+		g.physText(screen, "###", textX, textY, color.White)
+		return
+	}
+
+	title := cardTitle(c)
+	lines := []string{title}
+	if c.Trump {
+		lines = append(lines, "主")
+	}
+	sort.Strings(lines)
+	for i, line := range lines {
+		textX := x + g.sc.PXAbsolute(10)
+		textY := y + g.sc.PXAbsolute(18) + i*g.sc.PXAbsolute(12)
+		g.physText(screen, line, textX, textY,
+			withAlpha(color.RGBA{0x00, 0x00, 0x00, 0xff}, alpha))
+	}
+}
+
+func withAlpha(clr color.RGBA, alpha float32) color.RGBA {
+	clr.A = uint8(float32(clr.A) * alpha)
+	return clr
+}
+
+func cardTitle(c baseui.CardView) string {
+	if c.Rank != "" && c.Suit != "" {
+		return c.Suit + c.Rank
+	}
+	return c.Label
+}
+
+// ----- 保留方法（方案二迁移）----------------------------------------------
 
 func (g *GUI) ensureBidSelectionLocked() {
 	if len(g.st.view.BidChoices) == 0 {
@@ -599,194 +1065,4 @@ func (g *GUI) biddingRaisedCards(view baseui.TableView) map[int]bool {
 		}
 	}
 	return result
-}
-
-func (g *GUI) drawBidButtons(screen *ebiten.Image, view baseui.TableView) {
-	vector.DrawFilledRect(screen, float32(BidPanelX), float32(BidPanelY), float32(BidPanelW), float32(BidPanelH), color.RGBA{0x1e, 0x26, 0x31, 0xf0}, false)
-	vector.StrokeRect(screen, float32(BidPanelX), float32(BidPanelY), float32(BidPanelW), float32(BidPanelH), 2, hiliteColor, false)
-	g.drawText(screen, "亮主", BidPanelX+18, BidPanelY+20, hiliteColor)
-	g.drawText(screen, "选花色后点继续", BidPanelX+54, BidPanelY+20, color.White)
-
-	g.st.mu.RLock()
-	selectedKey := g.st.selectedBidChoice
-	g.st.mu.RUnlock()
-
-	available := map[string]baseui.BidChoice{}
-	for _, choice := range g.bidSuitButtons(view) {
-		available[choice.Suit] = choice
-	}
-	order := []string{"黑桃", "红心", "梅花", "方块"}
-	startX := BidPanelX + 18
-	y := BidPanelY + 38
-	for i, suit := range order {
-		choice, ok := available[suit]
-		if !ok {
-			choice = baseui.BidChoice{Type: "", Suit: suit}
-		}
-		x := startX + i*(BidSymbolSize+BidSymbolGap)
-		selected := ok && choice.Type+"|"+choice.Suit == selectedKey
-		g.drawBidSuitButton(screen, x, y, choice, selected, ok)
-	}
-	if special, ok := g.bidSpecialChoice(view); ok {
-		g.drawActionButton(screen, BidPanelX+18, BidPanelY+76, 76, 26, "无主", baseui.UIAction{Type: baseui.ActionSelectBid, BidType: special.Type, BidSuit: special.Suit}, true, special.Type+"|"+special.Suit != selectedKey)
-	}
-	g.drawActionButton(screen, BidPanelX+BidPanelW-168, BidPanelY+76, BidPrimaryBtnW, 26, "继续", baseui.UIAction{Type: baseui.ActionConfirm}, selectedKey != "", false)
-	g.drawActionButton(screen, BidPanelX+BidPanelW-84, BidPanelY+76, BidSecondaryW, 26, "不亮", baseui.UIAction{Type: baseui.ActionPass}, true, true)
-}
-
-func (g *GUI) drawActionButton(screen *ebiten.Image, x, y, w, h int, label string, action baseui.UIAction, enabled bool, secondary bool) {
-	fill := color.RGBA{0xdb, 0xb7, 0x43, 0xff}
-	var textColor color.Color = color.Black
-	if secondary {
-		fill = secondaryButtonFill
-		textColor = color.White
-	}
-	if !enabled {
-		fill = disabledColor
-		textColor = color.RGBA{0xdd, 0xdd, 0xdd, 0xff}
-	}
-	vector.DrawFilledRect(screen, float32(x), float32(y), float32(w), float32(h), fill, false)
-	vector.StrokeRect(screen, float32(x), float32(y), float32(w), float32(h), 1, outlineColor, false)
-	g.drawText(screen, label, x+10, y+h/2+4, textColor)
-	g.st.mu.Lock()
-	g.st.buttonRects = append(g.st.buttonRects, buttonRect{rect: rect{x: x, y: y, w: w, h: h}, action: action, enabled: enabled})
-	g.st.mu.Unlock()
-}
-
-func (g *GUI) drawOverlay(screen *ebiten.Image, view baseui.TableView, selected map[int]bool) {
-	if view.Phase == baseui.PhaseWelcome {
-		vector.DrawFilledRect(screen, 80, 110, 480, 190, messageBgColor, false)
-		vector.StrokeRect(screen, 80, 110, 480, 190, 2, hiliteColor, false)
-		title := "升级（拖拉机）纸牌游戏"
-		subtitle := "两副牌 · 从2开始打 · 4人对战"
-		g.drawText(screen, title, LogicalWidth/2-(len(title)*7)/2, 145, color.RGBA{0xff, 0xd6, 0x54, 0xff})
-		g.drawText(screen, subtitle, LogicalWidth/2-(len(subtitle)*7)/2, 175, color.White)
-		hint := "点击左上角按钮开始游戏"
-		g.drawText(screen, hint, LogicalWidth/2-(len(hint)*7)/2, 250, color.RGBA{0xaa, 0xcc, 0xaa, 0xff})
-		return
-	}
-
-	if view.Phase == baseui.PhaseWaitTrick && view.TrickWinner != "" {
-		vector.DrawFilledRect(screen, 168, 172, 304, 78, messageBgColor, false)
-		vector.StrokeRect(screen, 168, 172, 304, 78, 1, hiliteColor, false)
-		g.drawText(screen, fmt.Sprintf("本轮赢家：%s", view.TrickWinner), 205, 202, color.White)
-		g.drawText(screen, fmt.Sprintf("本轮得分：%d", view.TrickPoints), 205, 226, hiliteColor)
-		return
-	}
-
-	if view.Phase == baseui.PhaseHandResult {
-		vector.DrawFilledRect(screen, 150, 148, 350, 132, messageBgColor, false)
-		vector.StrokeRect(screen, 150, 148, 350, 132, 2, hiliteColor, false)
-		g.drawText(screen, "本局结算", 286, 176, hiliteColor)
-		for i, line := range strings.Split(view.Message, "\n") {
-			g.drawText(screen, line, 176, 206+i*20, color.White)
-		}
-		return
-	}
-
-	if view.Phase == baseui.PhaseDiscard {
-		vector.DrawFilledRect(screen, 176, 84, 290, 38, messageBgColor, false)
-		vector.StrokeRect(screen, 176, 84, 290, 38, 1, hiliteColor, false)
-		g.drawText(screen, fmt.Sprintf("请垫底牌（已选 %d/8）", len(selected)), 205, 108, color.White)
-	}
-
-	if view.Phase == baseui.PhaseDealing {
-		vector.DrawFilledRect(screen, 208, 84, 224, 38, messageBgColor, false)
-		vector.StrokeRect(screen, 208, 84, 224, 38, 1, hiliteColor, false)
-		g.drawText(screen, "发牌中...", 286, 108, color.White)
-	}
-
-	if view.Message == "" || view.Phase == baseui.PhaseBidding {
-		return
-	}
-	vector.DrawFilledRect(screen, 150, 170, 340, 80, messageBgColor, false)
-	vector.StrokeRect(screen, 150, 170, 340, 80, 1, hiliteColor, false)
-	for i, line := range strings.Split(view.Message, "\n") {
-		g.drawText(screen, line, 170, 195+i*18, color.White)
-	}
-}
-
-// drawCardWithAlpha draws a card (hi-res image when available) to the given
-// target. For card images we use FilterLinear so the hi-res 500×726 source
-// is smoothly downscaled to the logical card size (53×72). This offscreen is
-// later upscaled to the physical window using FilterNearest (pixel-perfect),
-// so the final result retains sharp card edges while showing smooth internal
-// detail.
-func (g *GUI) drawCardWithAlpha(screen *ebiten.Image, x, y int, c baseui.CardView, selected bool, alpha float32) {
-	if c.IsTractor {
-		vector.DrawFilledRect(screen, float32(x-2), float32(y-4), float32(CardW+4), 16, tractorColor, false)
-	}
-	if IsImageLoaded() && c.FaceUp && c.RankNum > 0 {
-		img := CardFaceImage(c.SuitNum, c.RankNum)
-		if img != nil {
-			op := &ebiten.DrawImageOptions{}
-			op.Filter = ebiten.FilterLinear
-			op.GeoM.Scale(float64(CardW)/float64(img.Bounds().Dx()), float64(CardH)/float64(img.Bounds().Dy()))
-			op.GeoM.Translate(float64(x), float64(y))
-			op.ColorScale.ScaleAlpha(alpha)
-			screen.DrawImage(img, op)
-			stroke := outlineColor
-			width := float32(2)
-			if c.Trump {
-				stroke = color.RGBA{0x51, 0x7a, 0xcf, 0xff}
-			}
-			if selected {
-				stroke = hiliteColor
-				width = 3
-			}
-			vector.StrokeRect(screen, float32(x-1), float32(y-1), float32(CardW+2), float32(CardH+2), width, stroke, false)
-			return
-		}
-	}
-	if IsImageLoaded() && !c.FaceUp {
-		img := CardBackImage(0)
-		if img != nil {
-			op := &ebiten.DrawImageOptions{}
-			op.Filter = ebiten.FilterLinear
-			op.GeoM.Scale(float64(CardW)/float64(img.Bounds().Dx()), float64(CardH)/float64(img.Bounds().Dy()))
-			op.GeoM.Translate(float64(x), float64(y))
-			op.ColorScale.ScaleAlpha(alpha)
-			screen.DrawImage(img, op)
-			return
-		}
-	}
-	fill := cardFaceColor
-	if !c.FaceUp {
-		fill = cardBackColor
-	}
-	fill = withAlpha(fill, alpha)
-	vector.DrawFilledRect(screen, float32(x), float32(y), float32(CardW), float32(CardH), fill, false)
-	stroke := outlineColor
-	if c.Trump {
-		stroke = color.RGBA{0x51, 0x7a, 0xcf, 0xff}
-	}
-	if selected {
-		stroke = hiliteColor
-	}
-	vector.StrokeRect(screen, float32(x), float32(y), float32(CardW), float32(CardH), 2, stroke, false)
-	if !c.FaceUp {
-		g.drawText(screen, "###", x+20, y+52, color.White)
-		return
-	}
-	title := cardTitle(c)
-	lines := []string{title}
-	if c.Trump {
-		lines = append(lines, "主")
-	}
-	sort.Strings(lines)
-	for i, line := range lines {
-		g.drawText(screen, line, x+10, y+18+i*12, withAlpha(color.RGBA{0x00, 0x00, 0x00, 0xff}, alpha))
-	}
-}
-
-func withAlpha(clr color.RGBA, alpha float32) color.RGBA {
-	clr.A = uint8(float32(clr.A) * alpha)
-	return clr
-}
-
-func cardTitle(c baseui.CardView) string {
-	if c.Rank != "" && c.Suit != "" {
-		return c.Suit + c.Rank
-	}
-	return c.Label
 }

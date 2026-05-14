@@ -12,7 +12,7 @@ type state struct {
 	view              baseui.TableView
 	actionCh          chan baseui.UIAction
 	selected          map[int]bool
-	cardRects         []rect
+	cardRects         []Rect   // 物理像素坐标的牌矩形
 	buttonRects       []buttonRect
 	lastClick         time.Time
 	lastCardIdx       int
@@ -22,7 +22,7 @@ type state struct {
 }
 
 type buttonRect struct {
-	rect
+	Rect
 	action  baseui.UIAction
 	enabled bool
 }

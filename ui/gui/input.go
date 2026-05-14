@@ -9,6 +9,13 @@ import (
 	baseui "github.com/smallnest/upgrade_poker/ui"
 )
 
+// ════════════════════════════════════════════════════════════════════════════
+// 方案二：输入处理
+//
+// 由于所有坐标现在都是物理像素，不再需要从物理坐标→逻辑坐标的转换。
+// 鼠标位置直接与物理像素的 cardRects/buttonRects 比较。
+// ════════════════════════════════════════════════════════════════════════════
+
 func (g *GUI) updateInput() {
 	g.handleKeyboard()
 
@@ -20,21 +27,20 @@ func (g *GUI) updateInput() {
 		return
 	}
 	g.mouseDown = true
-	// Convert cursor from physical window coords to logical (640x480) coords
-	physX, physY := ebiten.CursorPosition()
-	x := int(float64(physX) / g.scaleX)
-	y := int(float64(physY) / g.scaleY)
+
+	// 鼠标坐标已经是物理像素，直接使用
+	x, y := ebiten.CursorPosition()
 
 	g.st.mu.RLock()
 	buttonRects := append([]buttonRect(nil), g.st.buttonRects...)
-	cardRects := append([]rect(nil), g.st.cardRects...)
+	cardRects := append([]Rect(nil), g.st.cardRects...)
 	phase := g.st.view.Phase
 	waitingForHuman := g.st.view.WaitingForHuman
 	hintIdx := append([]int(nil), g.st.view.HintCardIdx...)
 	g.st.mu.RUnlock()
 
 	for _, b := range buttonRects {
-		if !b.enabled || !b.contains(x, y) {
+		if !b.enabled || !b.Contains(x, y) {
 			continue
 		}
 		action := b.action
@@ -48,7 +54,6 @@ func (g *GUI) updateInput() {
 		case baseui.ActionHint:
 			g.applyHintSelection(hintIdx)
 			return
-
 		case baseui.ActionConfirm:
 			g.submitSelectionOrConfirm()
 			return
@@ -61,15 +66,17 @@ func (g *GUI) updateInput() {
 		g.st.actionCh <- action
 		return
 	}
+
 	if phase != baseui.PhasePlaying && phase != baseui.PhaseDiscard {
 		return
 	}
 	if phase == baseui.PhasePlaying && !waitingForHuman {
 		return
 	}
+
 	for idx := len(cardRects) - 1; idx >= 0; idx-- {
 		r := cardRects[idx]
-		if !r.contains(x, y) {
+		if !r.Contains(x, y) {
 			continue
 		}
 		selected, double := g.toggleCardSelection(idx)
@@ -236,7 +243,6 @@ func (g *GUI) applyHintSelection(indices []int) {
 	}
 	g.st.mu.Unlock()
 }
-
 
 func (g *GUI) chooseBid(action baseui.UIAction) {
 	g.st.mu.Lock()

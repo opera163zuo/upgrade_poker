@@ -64,7 +64,9 @@ func TestSuitRowOrderTrumpLast(t *testing.T) {
 }
 
 func TestSouthSlotsTrumpOnRight(t *testing.T) {
-	g := &GUI{}
+	g := &GUI{
+		sc: BuildScaleCtx(1280, 960, 1.0),
+	}
 	cards := []baseui.CardView{
 		{Suit: "♦", EffectiveSuit: "方块", Rank: "10", FaceUp: true},
 		{Suit: "♣", EffectiveSuit: "梅花", Rank: "K", FaceUp: true},
