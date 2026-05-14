@@ -71,6 +71,7 @@ type PlayerView struct {
 	PlayedCards []CardView
 	IsDealer    bool
 	IsThinking  bool
+	IsBidder    bool
 }
 
 type TableView struct {

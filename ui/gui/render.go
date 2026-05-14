@@ -161,9 +161,9 @@ func (g *GUI) drawLevelPairPhys(screen *ebiten.Image, x, y, w, h int,
 func (g *GUI) statusLine(view baseui.TableView, selected map[int]bool) string {
 	switch view.Phase {
 	case baseui.PhaseDealing:
-		return "发牌中... 若拿到级牌可立即亮主"
+		return "发牌中..."
 	case baseui.PhaseBidding:
-		return "请选择亮主花色，然后点击【继续】确认 / P 不亮"
+		return "请选择亮主花色 / 反主 / B确认 P不亮"
 	case baseui.PhaseDiscard:
 		return fmt.Sprintf("请垫底牌（已选 %d/8） / Enter 扣底", len(selected))
 	case baseui.PhasePlaying:
@@ -221,16 +221,28 @@ func (g *GUI) drawSeatLabelPhys(screen *ebiten.Image, pv baseui.PlayerView, x, y
 	if pv.IsDealer {
 		label += " ★"
 	}
+	if pv.IsBidder {
+		label += " 🃏" // bidder indicator
+	}
 	if pv.IsThinking {
 		dots := strings.Repeat(".", int(time.Now().UnixMilli()/350)%3+1)
 		label += " 思考中" + dots
 	}
 	padX := g.sc.PXAbsolute(8)
 	padY := g.sc.PXAbsolute(3)
-	g.physTextBadge(screen, label, x+padX, y, padX, padY,
-		color.RGBA{0x0d, 0x17, 0x22, 0xc8},
-		color.RGBA{0x9f, 0xb8, 0xc4, 0xff},
-		color.White)
+
+	if pv.IsBidder {
+		// White background, red text for bidder
+		g.physTextBadge(screen, label, x+padX, y, padX, padY,
+			color.RGBA{0xff, 0xff, 0xff, 0xff},
+			color.RGBA{0xcc, 0x00, 0x00, 0xff},
+			color.RGBA{0xcc, 0x00, 0x00, 0xff})
+	} else {
+		g.physTextBadge(screen, label, x+padX, y, padX, padY,
+			color.RGBA{0x0d, 0x17, 0x22, 0xc8},
+			color.RGBA{0x9f, 0xb8, 0xc4, 0xff},
+			color.White)
+	}
 }
 
 func (g *GUI) drawCenter(screen *ebiten.Image, view baseui.TableView) {

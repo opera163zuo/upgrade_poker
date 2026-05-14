@@ -56,6 +56,9 @@ type Game struct {
 	uiDealCounts      [4]int
 	uiThinkingPos     PlayerPosition
 	uiThinking        bool
+
+	handsPlayed int
+	bidder      PlayerPosition
 }
 
 func NewGame(gameUI baseui.GameUI) *Game {
@@ -75,6 +78,7 @@ func NewGame(gameUI baseui.GameUI) *Game {
 	g.Players[PositionEast] = NewPlayer(PositionEast, false)
 
 	g.Dealer = PlayerPosition(rng.Intn(4))
+	g.bidder = g.Dealer
 
 	return g
 }
@@ -122,7 +126,7 @@ func (g *Game) applyBid(bid *Bid) {
 	b := *bid
 	g.CurrentBid = &b
 	g.TrumpSuit = GetTrumpSuit(&b)
-	g.Dealer = b.Player
+	g.bidder = b.Player
 }
 
 func (g *Game) Deal() {
@@ -180,9 +184,18 @@ func (g *Game) DealAnimated() bool {
 // RunBiddingPhase handles bidding with TUI
 func (g *Game) RunBiddingPhase() bool {
 	level := g.DealerLevel()
+	g.CurrentBid = nil
+	g.TrumpSuit = SuitJoker
+	g.bidder = g.Dealer
 
-	for i := 0; i < 4; i++ {
-		pos := PlayerPosition(i)
+	// Start with dealer's right-hand neighbor (clockwise: South→East→North→West→South)
+	pos := g.Dealer.Next()
+
+	consecutivePasses := 0
+	hasBid := false
+	locked := false
+
+	for !locked {
 		player := g.Players[pos]
 
 		possibleBids := CanBid(player, level)
@@ -194,15 +207,14 @@ func (g *Game) RunBiddingPhase() bool {
 		}
 
 		if len(validBids) == 0 {
-			continue
-		}
-
-		if player.IsHuman {
+			consecutivePasses++
+		} else if player.IsHuman {
 			g.setBidOptions(validBids)
 			g.setPhase(baseui.PhaseBidding)
 			g.showMessage("请选择亮主方式", nil)
 
-			for {
+			waitingBid := true
+			for waitingBid {
 				action, restarted := g.waitAction()
 				if restarted {
 					return true
@@ -212,25 +224,57 @@ func (g *Game) RunBiddingPhase() bool {
 						b := *bid
 						b.Player = player.Position
 						g.applyBid(&b)
-						break
+						hasBid = true
+						consecutivePasses = 0
+						// Locking bids end immediately
+						if b.Type == BidPairLevel || b.Type == BidTripleLevel || b.Type == BidPairJoker {
+							locked = true
+						}
+						waitingBid = false
 					}
 				} else if action.Type == baseui.ActionPass {
-					break
+					consecutivePasses++
+					waitingBid = false
 				}
 			}
 			g.showMessage("", nil)
 		} else {
-			// AI bidding logic
 			bid := g.aiBidSimple(player, validBids)
 			if bid != nil {
 				g.applyBid(bid)
+				hasBid = true
+				consecutivePasses = 0
+				if bid.Type == BidPairLevel || bid.Type == BidTripleLevel || bid.Type == BidPairJoker {
+					locked = true
+				}
+			} else {
+				consecutivePasses++
 			}
 		}
+
+		// Check end conditions
+		if locked {
+			break
+		}
+		if hasBid && consecutivePasses >= 4 {
+			break // full cycle with no override
+		}
+		if !hasBid && consecutivePasses >= 4 {
+			break // all passed, re-deal
+		}
+
+		pos = pos.Next()
 	}
 
+	// Finalize dealer and trump
 	if g.CurrentBid != nil {
-		g.Dealer = g.CurrentBid.Player
 		g.TrumpSuit = GetTrumpSuit(g.CurrentBid)
+		// First hand: bidder becomes dealer
+		// Subsequent hands: dealer is already set from HandleUpgrade, don't change
+		if g.handsPlayed == 0 {
+			g.Dealer = g.bidder
+		}
+		// On subsequent hands, g.Dealer stays as set by HandleUpgrade
 	} else {
 		g.TrumpSuit = SuitJoker
 	}
@@ -452,6 +496,7 @@ func (g *Game) PlayHand() bool {
 		leadPlayer = winner
 	}
 
+	g.handsPlayed++
 	g.HandleBottomScore()
 	if g.HandleUpgrade() {
 		return true
@@ -798,6 +843,7 @@ func (g *Game) UISnapshot() baseui.TableView {
 			HandCount:  len(p.Hand),
 			IsDealer:   p.Position == g.Dealer,
 			IsThinking: g.uiThinking && p.Position == g.uiThinkingPos,
+			IsBidder:   g.CurrentBid != nil && p.Position == g.bidder,
 		}
 		if p.IsHuman {
 			drawOrder := g.BuildDrawOrder(p.Position)
