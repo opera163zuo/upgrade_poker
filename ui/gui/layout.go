@@ -20,16 +20,16 @@ const (
 	// 菜单栏
 	RefMenuBarH = 24
 
-	// 信息栏
-	RefInfoBarX = 25
+	// 右侧状态面板（原版纵列风格）
+	RefInfoBarX = 535
 	RefInfoBarY = 28
-	RefInfoBarW = 590
-	RefInfoBarH = 42
+	RefInfoBarW = 100
+	RefInfoBarH = 200
 
-	// 牌桌
+	// 牌桌（缩窄留出右侧状态面板）
 	RefTableX = 25
 	RefTableY = 74
-	RefTableW = 590
+	RefTableW = 506
 	RefTableH = 346
 
 	// 南家手牌（底部）
@@ -46,8 +46,8 @@ const (
 	RefWestHandY   = 175
 	RefWestHandGap = 3
 
-	// 东家手牌（右侧）
-	RefEastHandX   = 554
+	// 东家手牌（右侧，随牌桌左移）
+	RefEastHandX   = 478
 	RefEastHandY   = 223
 	RefEastHandGap = 3
 

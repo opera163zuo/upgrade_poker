@@ -165,12 +165,12 @@ func (g *GUI) Draw(screen *ebiten.Image) {
 	resetFillRect(screen, tableX, tableY, tableW, tableH, tableColor)
 	resetStrokeRect(screen, tableX, tableY, tableW, tableH, 2, outlineColor)
 
-	// 信息栏
+	// 右侧状态面板（原版 Win32 风格：浅灰底硬边框）
 	infoX, infoY := g.sc.PX(RefInfoBarX), g.sc.PX(RefInfoBarY)
 	infoW, infoH := g.sc.PXAbsolute(RefInfoBarW), g.sc.PXAbsolute(RefInfoBarH)
-	infoFill := color.RGBA{0x12, 0x2a, 0x1d, 0xff}
+	infoFill := color.RGBA{0xd4, 0xd0, 0xc8, 0xff} /* 经典 Win32 对话框灰 */
 	resetFillRect(screen, infoX, infoY, infoW, infoH, infoFill)
-	resetStrokeRect(screen, infoX, infoY, infoW, infoH, 1, outlineColor)
+	resetStrokeRect(screen, infoX, infoY, infoW, infoH, 1, color.RGBA{0x00, 0x00, 0x00, 0xff})
 	g.drawInfoBar(screen, view, selected)
 
 	g.drawNorth(screen, view)

@@ -88,113 +88,108 @@ type southSlot struct {
 	h   int
 }
 
-// ----- 信息栏 -------------------------------------------------------------
+// ----- 右侧状态面板（原版纵列 Win32 风格）----------------------------------
+//
+// 白底硬边框、小格纵列分隔、红蓝强对比、无现代阴影
+// 5 个状态格从上到下纵列排列在右侧面板内
 
 func (g *GUI) drawInfoBar(screen *ebiten.Image, view baseui.TableView, selected map[int]bool) {
 	baseX, baseY := g.sc.PX(RefInfoBarX), g.sc.PX(RefInfoBarY)
-	padX := g.sc.PXAbsolute(6)
-	padY := g.sc.PXAbsolute(6)
-	h := g.sc.PXAbsolute(30)
-	boxY := baseY + padY
+	pad := g.sc.PXAbsolute(8)
+	cellW := g.sc.PXAbsolute(RefInfoBarW) - pad*2 // 单元格宽 = 面板宽 - 左右内边距
+	cellH := g.sc.PXAbsolute(26)                     // 单元格高
 	gap := g.sc.PXAbsolute(4)
-	x := baseX + padX
+	boxX := baseX + pad
+	y := baseY + g.sc.PXAbsolute(5) // 距面板顶 5px
 
-	// --- Box 1: Bidder Direction (叫主方位) ---
-	b1W := g.sc.PXAbsolute(56)
+	// 原版状态格颜色
+	whiteBg := color.RGBA{0xff, 0xff, 0xff, 0xff}
+	blackBorder := color.RGBA{0x00, 0x00, 0x00, 0xff}
+	redText := color.RGBA{0xcc, 0x00, 0x00, 0xff}
+	blueText := color.RGBA{0x00, 0x00, 0xaa, 0xff}
+	blackText := color.RGBA{0x00, 0x00, 0x00, 0xff}
+
+	// ── Cell 1: 叫主方位 ──
 	bidderText := "🡆" + view.BidderDirection
-	var b1Fill color.Color = color.RGBA{0x1e, 0x2a, 0x1e, 0xff}
-	var b1TextColor color.Color = color.White
+	b1Color := blackText
 	if view.IsMyTeamBidder && view.BidderDirection != "🔄" {
-		b1Fill = color.RGBA{0x44, 0x1a, 0x1a, 0xff}
-		b1TextColor = color.RGBA{0xff, 0x66, 0x66, 0xff}
+		b1Color = redText
 	}
-	g.drawStatusBoxPhys(screen, x, boxY, b1W, h, b1Fill, bidderText, b1TextColor)
-	x += b1W + gap
+	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, bidderText, b1Color, whiteBg, blackBorder)
+	y += cellH + gap
 
-	// --- Box 2: Trump Suit (主花色) ---
-	b2W := g.sc.PXAbsolute(44)
-	var trumpFill color.Color = color.RGBA{0x1a, 0x1a, 0x2a, 0xff}
-	var trumpColor color.Color = color.White
-	if view.BidderSuitSymbol == "♦" || view.BidderSuitSymbol == "♥" {
-		trumpColor = color.RGBA{0xff, 0x44, 0x44, 0xff}
+	// ── Cell 2: 主花色 ──
+	suitText := view.BidderSuitSymbol
+	if suitText == "" {
+		suitText = "—"
 	}
-	g.drawStatusBoxPhys(screen, x, boxY, b2W, h, trumpFill, view.BidderSuitSymbol, trumpColor)
-	x += b2W + gap
+	suitColor := blackText
+	if suitText == "♦" || suitText == "♥" {
+		suitColor = redText
+	}
+	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, suitText, suitColor, whiteBg, blackBorder)
+	y += cellH + gap
 
-	// --- Box 3: Level (级牌格) ---
-	b3W := g.sc.PXAbsolute(100)
+	// ── Cell 3: 级牌 / 己家态 ──
 	var levelText string
 	var levelColor color.Color
-	var levelFill color.Color
 	if view.IsMyTeamBidder && view.IsMyTeamDealer {
 		levelText = "己家" + view.DealerLevel
-		levelColor = color.RGBA{0xff, 0x44, 0x44, 0xff}
-		levelFill = color.RGBA{0x3a, 0x1e, 0x1e, 0xff}
+		levelColor = redText   // 己家叫主+己家当庄 → 红色强调
 	} else {
 		levelText = view.DealerLevel
-		levelColor = color.RGBA{0x88, 0xbb, 0xff, 0xff}
-		levelFill = color.RGBA{0x1a, 0x1e, 0x2a, 0xff}
+		levelColor = blueText
 	}
-	g.drawStatusBoxPhys(screen, x, boxY, b3W, h, levelFill, levelText, levelColor)
-	x += b3W + gap
+	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, levelText, levelColor, whiteBg, blackBorder)
+	y += cellH + gap
 
-	// --- Box 4: Dealer Status (敌家态) ---
-	b4W := g.sc.PXAbsolute(100)
+	// ── Cell 4: 敌家态 ──
 	var dealerText string
 	var dealerColor color.Color
-	var dealerFill color.Color
 	if view.IsMyTeamDealer {
 		dealerText = "己家" + view.DealerLevel
-		dealerColor = color.RGBA{0x88, 0xbb, 0xff, 0xff}
-		dealerFill = color.RGBA{0x1a, 0x2a, 0x44, 0xff}
+		dealerColor = blueText  // 己家当庄 → 蓝色（己方庄家=信息性）
 	} else {
 		dealerText = "敌家" + view.DealerLevel
-		dealerColor = color.RGBA{0xff, 0x55, 0x55, 0xff}
-		dealerFill = color.RGBA{0x44, 0x1a, 0x1a, 0xff}
+		dealerColor = redText   // 敌家当庄 → 红色警示
 	}
-	g.drawStatusBoxPhys(screen, x, boxY, b4W, h, dealerFill, dealerText, dealerColor)
-	x += b4W + gap
+	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, dealerText, dealerColor, whiteBg, blackBorder)
+	y += cellH + gap
 
-	// --- Box 5: Score (得分格 - 永远只显示闲家得分) ---
-	b5W := g.sc.PXAbsolute(120)
-	scoreText := fmt.Sprintf("得分 %d", view.NonDealerScore)
-	g.drawStatusBoxPhys(screen, x, boxY, b5W, h,
-		color.RGBA{0x18, 0x24, 0x34, 0xff},
-		scoreText, color.RGBA{0xff, 0x88, 0x44, 0xff})
+	// ── Cell 5: 闲家得分 ──
+	scoreText := fmt.Sprintf("%d分", view.NonDealerScore)
+	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, scoreText, redText, whiteBg, blackBorder)
+	y += cellH + gap
 
-	// 第二行状态 (round info, same as before)
-	line2 := fmt.Sprintf("第 %d / 25 轮 · 手牌 南%d 西%d 北%d 东%d · %s",
+	// 轮次与手牌信息（面板底部）
+	line2 := fmt.Sprintf("R%d %d|%d|%d|%d %s",
 		view.TrickCount+1,
 		view.Players[0].HandCount, view.Players[1].HandCount,
 		view.Players[2].HandCount, view.Players[3].HandCount,
 		g.statusLine(view, selected))
 
-	badgePadX := g.sc.PXAbsolute(8)
-	badgePadY := g.sc.PXAbsolute(4)
-	g.physTextBadge(screen, line2,
-		g.sc.PX(RefInfoBarX)+g.sc.PXAbsolute(12),
-		g.sc.PX(RefInfoBarY)+g.sc.PXAbsolute(41),
-		badgePadX, badgePadY,
-		color.RGBA{0x0e, 0x1a, 0x12, 0xcc},
-		color.RGBA{0x6b, 0x88, 0x73, 0xff},
-		color.RGBA{0xd5, 0xe5, 0xd5, 0xff})
+	g.physText(screen, line2,
+		baseX+g.sc.PXAbsolute(6),
+		y+g.sc.PXAbsolute(10),
+		color.RGBA{0x33, 0x33, 0x33, 0xff})
 }
 
-func (g *GUI) drawStatusBoxPhys(screen *ebiten.Image, x, y, w, h int,
-	fill color.Color, label string, textColor color.Color) {
+// drawOldStatusBox 原版 Win32 风格状态格：白底、黑硬边框、无阴影
+func (g *GUI) drawOldStatusBox(screen *ebiten.Image, x, y, w, h int,
+	label string, textColor, fill, border color.Color) {
 
 	resetFillRect(screen, x, y, w, h, fill)
-	resetStrokeRect(screen, x, y, w, h, 1,
-		color.RGBA{0xe9, 0xe9, 0xe9, 0xff})
-	textOffset := g.sc.PXAbsolute(10)
+	resetStrokeRect(screen, x, y, w, h, 1, border)
+
+	textX := x + g.sc.PXAbsolute(6)
 	textY := y + h/2 + int(g.sc.FontSize()*0.3)
-	g.physText(screen, label, x+textOffset, textY, textColor)
+	g.physText(screen, label, textX, textY, textColor)
 }
 
 func (g *GUI) drawLevelPairPhys(screen *ebiten.Image, x, y, w, h int,
 	ourLevel, oppLevel string) {
-	// Kept for backward compatibility; no longer used in Plan C layout.
-	// The new layout uses 5 individual status boxes via drawInfoBar.
+	// Kept for backward compatibility; no longer used.
+	// The new layout uses 5 vertical status boxes via drawInfoBar.
 }
 
 func (g *GUI) statusLine(view baseui.TableView, selected map[int]bool) string {
