@@ -94,29 +94,75 @@ func (g *GUI) drawInfoBar(screen *ebiten.Image, view baseui.TableView, selected 
 	baseX, baseY := g.sc.PX(RefInfoBarX), g.sc.PX(RefInfoBarY)
 	padX := g.sc.PXAbsolute(6)
 	padY := g.sc.PXAbsolute(6)
-
-	leftW := g.sc.PXAbsolute(246)
-	midW := g.sc.PXAbsolute(176)
-	rightW := g.sc.PXAbsolute(144)
 	h := g.sc.PXAbsolute(30)
+	boxY := baseY + padY
+	gap := g.sc.PXAbsolute(4)
+	x := baseX + padX
 
-	// 庄家/主花色
-	leftX := baseX + padX
-	g.drawStatusBoxPhys(screen, leftX, baseY+padY, leftW, h,
-		color.RGBA{0x17, 0x35, 0x26, 0xff},
-		fmt.Sprintf("庄家 %s · 主花色 %s", view.Dealer, view.TrumpSuit), color.White)
+	// --- Box 1: Bidder Direction (叫主方位) ---
+	b1W := g.sc.PXAbsolute(56)
+	bidderText := "🡆" + view.BidderDirection
+	var b1Fill color.Color = color.RGBA{0x1e, 0x2a, 0x1e, 0xff}
+	var b1TextColor color.Color = color.White
+	if view.IsMyTeamBidder && view.BidderDirection != "🔄" {
+		b1Fill = color.RGBA{0x44, 0x1a, 0x1a, 0xff}
+		b1TextColor = color.RGBA{0xff, 0x66, 0x66, 0xff}
+	}
+	g.drawStatusBoxPhys(screen, x, boxY, b1W, h, b1Fill, bidderText, b1TextColor)
+	x += b1W + gap
 
-	// 等级
-	g.drawLevelPairPhys(screen, leftX+padX+leftW, baseY+padY, midW, h,
-		view.DealerLevel, view.OpponentLevel)
+	// --- Box 2: Trump Suit (主花色) ---
+	b2W := g.sc.PXAbsolute(44)
+	var trumpFill color.Color = color.RGBA{0x1a, 0x1a, 0x2a, 0xff}
+	var trumpColor color.Color = color.White
+	if view.BidderSuitSymbol == "♦" || view.BidderSuitSymbol == "♥" {
+		trumpColor = color.RGBA{0xff, 0x44, 0x44, 0xff}
+	}
+	g.drawStatusBoxPhys(screen, x, boxY, b2W, h, trumpFill, view.BidderSuitSymbol, trumpColor)
+	x += b2W + gap
 
-	// 得分
-	rightX := leftX + padX + leftW + padX + midW
-	g.drawStatusBoxPhys(screen, rightX, baseY+padY, rightW, h,
+	// --- Box 3: Level (级牌格) ---
+	b3W := g.sc.PXAbsolute(100)
+	var levelText string
+	var levelColor color.Color
+	var levelFill color.Color
+	if view.IsMyTeamBidder && view.IsMyTeamDealer {
+		levelText = "己家" + view.DealerLevel
+		levelColor = color.RGBA{0xff, 0x44, 0x44, 0xff}
+		levelFill = color.RGBA{0x3a, 0x1e, 0x1e, 0xff}
+	} else {
+		levelText = view.DealerLevel
+		levelColor = color.RGBA{0x88, 0xbb, 0xff, 0xff}
+		levelFill = color.RGBA{0x1a, 0x1e, 0x2a, 0xff}
+	}
+	g.drawStatusBoxPhys(screen, x, boxY, b3W, h, levelFill, levelText, levelColor)
+	x += b3W + gap
+
+	// --- Box 4: Dealer Status (敌家态) ---
+	b4W := g.sc.PXAbsolute(100)
+	var dealerText string
+	var dealerColor color.Color
+	var dealerFill color.Color
+	if view.IsMyTeamDealer {
+		dealerText = "己家" + view.DealerLevel
+		dealerColor = color.RGBA{0x88, 0xbb, 0xff, 0xff}
+		dealerFill = color.RGBA{0x1a, 0x2a, 0x44, 0xff}
+	} else {
+		dealerText = "敌家" + view.DealerLevel
+		dealerColor = color.RGBA{0xff, 0x55, 0x55, 0xff}
+		dealerFill = color.RGBA{0x44, 0x1a, 0x1a, 0xff}
+	}
+	g.drawStatusBoxPhys(screen, x, boxY, b4W, h, dealerFill, dealerText, dealerColor)
+	x += b4W + gap
+
+	// --- Box 5: Score (得分格 - 永远只显示闲家得分) ---
+	b5W := g.sc.PXAbsolute(120)
+	scoreText := fmt.Sprintf("得分 %d", view.NonDealerScore)
+	g.drawStatusBoxPhys(screen, x, boxY, b5W, h,
 		color.RGBA{0x18, 0x24, 0x34, 0xff},
-		fmt.Sprintf("得分 %d : %d", view.TeamScore[0], view.TeamScore[1]), hiliteColor)
+		scoreText, color.RGBA{0xff, 0x88, 0x44, 0xff})
 
-	// 第二行状态
+	// 第二行状态 (round info, same as before)
 	line2 := fmt.Sprintf("第 %d / 25 轮 · 手牌 南%d 西%d 北%d 东%d · %s",
 		view.TrickCount+1,
 		view.Players[0].HandCount, view.Players[1].HandCount,
@@ -147,15 +193,8 @@ func (g *GUI) drawStatusBoxPhys(screen *ebiten.Image, x, y, w, h int,
 
 func (g *GUI) drawLevelPairPhys(screen *ebiten.Image, x, y, w, h int,
 	ourLevel, oppLevel string) {
-
-	gap := g.sc.PXAbsolute(10)
-	half := (w - gap) / 2
-	g.drawStatusBoxPhys(screen, x, y, half, h,
-		color.RGBA{0xf0, 0xf4, 0xfc, 0xff},
-		"我方 "+ourLevel, color.RGBA{0x2d, 0x65, 0xc4, 0xff})
-	g.drawStatusBoxPhys(screen, x+half+gap, y, half, h,
-		color.RGBA{0xfb, 0xf1, 0xf1, 0xff},
-		"敌方 "+oppLevel, color.RGBA{0xc8, 0x39, 0x39, 0xff})
+	// Kept for backward compatibility; no longer used in Plan C layout.
+	// The new layout uses 5 individual status boxes via drawInfoBar.
 }
 
 func (g *GUI) statusLine(view baseui.TableView, selected map[int]bool) string {

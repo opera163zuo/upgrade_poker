@@ -879,6 +879,34 @@ func (g *Game) UISnapshot() baseui.TableView {
 	for _, c := range g.BottomCards {
 		view.BottomCards = append(view.BottomCards, baseui.CardView{Label: c.String(), Suit: c.Suit.Symbol(), Rank: c.Rank.String(), SuitNum: int(c.Suit), RankNum: int(c.Rank), FaceUp: true, Trump: IsTrump(c, g.TrumpSuit, g.DealerLevel())})
 	}
+
+	// --- Plan C: enhanced status panel fields ---
+	{
+		pos := g.CurrentBid
+		if pos != nil {
+			switch g.bidder {
+			case PositionEast:
+				view.BidderDirection = "右"
+			case PositionSouth:
+				view.BidderDirection = "下"
+			case PositionWest:
+				view.BidderDirection = "左"
+			case PositionNorth:
+				view.BidderDirection = "上"
+			}
+		} else {
+			view.BidderDirection = "🔄"
+		}
+	}
+	if g.TrumpSuit == SuitJoker {
+		view.BidderSuitSymbol = "无主"
+	} else {
+		view.BidderSuitSymbol = g.TrumpSuit.Symbol()
+	}
+	view.IsMyTeamBidder = PlayerTeam(g.bidder) == Team0
+	view.IsMyTeamDealer = PlayerTeam(g.Dealer) == Team0
+	view.NonDealerScore = g.TeamScore[g.OpponentTeam()]
+
 	view.HintCardIdx = g.buildHintCardIdx()
 	view.CanHint = len(view.HintCardIdx) > 0
 	return view
