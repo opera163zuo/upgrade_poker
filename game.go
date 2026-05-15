@@ -394,7 +394,9 @@ func (g *Game) PlayTrickFromLead(leadPlayer PlayerPosition) (PlayerPosition, boo
 		// Clear selection after removing cards to prevent stale selection
 		if player.IsHuman {
 			g.clearSelection()
-
+		} else {
+			// AI played — render so the card is visible in the center immediately
+			g.render()
 		}
 
 		// Pause so player can see each play (shorter for human since they chose)
@@ -599,6 +601,7 @@ func (g *Game) HandleUpgrade() bool {
 	g.TrumpSuit = SuitJoker
 	if g.Phase != PhaseGameOver {
 		g.Phase = PhaseDealing
+		g.setPhase(baseui.PhaseDealing)
 	}
 	g.showMessage("", nil)
 	return false
