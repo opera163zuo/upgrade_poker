@@ -774,3 +774,247 @@ func TestValidateBigJokerPairLeading(t *testing.T) {
 		t.Error("大王对 should be a valid leading play")
 	}
 }
+
+
+// --- 牌型压制修复 tests ---
+
+func TestPairNotBeatenByDiffSuitSameRankTrump(t *testing.T) {
+	// 主牌是方块，用户出一对方块7
+	// 对家出红桃2 + 方块2（其中2是级牌时，不同花色的两张级牌）
+	// 系统应判用户更大，因为红桃2+方块2不算对子
+	level := Rank2
+	trumpSuit := SuitDiamond
+
+	// 用户出一对方块7
+	lead := []Card{
+		{Suit: SuitDiamond, Rank: Rank7, Copy: 0},
+		{Suit: SuitDiamond, Rank: Rank7, Copy: 1},
+	}
+
+	// 对家出红桃2 + 方块2 — 不同花色同Rank = 不算对子
+	response := []Card{
+		{Suit: SuitHeart, Rank: Rank2, Copy: 0},
+		{Suit: SuitDiamond, Rank: Rank2, Copy: 1},
+	}
+
+	// Verify: analyzeSameSuit should NOT detect response as a pair
+	responseGroups := AnalyzePlay(response, trumpSuit, level)
+	isPair := false
+	for _, g := range responseGroups {
+		if g.IsPair {
+			isPair = true
+			break
+		}
+	}
+	if isPair {
+		t.Error("红桃2+方块2 should NOT be detected as a pair (different actual suits)")
+	}
+
+	// Verify: comparePlays should say lead wins
+	leadSuit := EffectiveSuit(lead[0], trumpSuit, level)
+	cmp := comparePlays(lead, response, trumpSuit, level, leadSuit)
+	if cmp <= 0 {
+		t.Errorf("comparePlays(方块7对, 红桃2+方块2) = %d, expected >0 (lead should win)", cmp)
+	}
+}
+
+func TestKillNonTrumpPairNeedsTrumpPair(t *testing.T) {
+	// 首出是一对非主牌对子（如梅花7）
+	// 毙掉它需要一对主牌，不能用两张不同的主牌
+	level := Rank2
+	trumpSuit := SuitDiamond
+
+	// 首出：梅花7对（非主牌）
+	lead := []Card{
+		{Suit: SuitClub, Rank: Rank7, Copy: 0},
+		{Suit: SuitClub, Rank: Rank7, Copy: 1},
+	}
+
+	// 毙牌尝试：红桃2 + 方块7（都是主牌但不同花色不同Rank — 不是对子）
+	badKill := []Card{
+		{Suit: SuitHeart, Rank: Rank2, Copy: 0}, // off-level, trump
+		{Suit: SuitDiamond, Rank: Rank7, Copy: 0}, // trump suit
+	}
+
+	// Compare: lead should win because badKill is not a pair
+	leadSuit := EffectiveSuit(lead[0], trumpSuit, level)
+	cmp := comparePlays(badKill, lead, trumpSuit, level, leadSuit)
+	if cmp >= 0 {
+		t.Error("Two different trump cards (non-pair) should NOT beat a non-trump pair")
+	}
+
+	// 正确的毙牌：方块7对（一对主牌）
+	goodKill := []Card{
+		{Suit: SuitDiamond, Rank: Rank7, Copy: 0},
+		{Suit: SuitDiamond, Rank: Rank7, Copy: 1},
+	}
+	cmp = comparePlays(goodKill, lead, trumpSuit, level, leadSuit)
+	if cmp <= 0 {
+		t.Error("A genuine trump pair should beat a non-trump pair")
+	}
+}
+
+func TestPairRequiresSameActualSuit(t *testing.T) {
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	// Same rank but different suits — should NOT be a pair
+	cards := []Card{
+		{Suit: SuitSpade, Rank: Rank10, Copy: 0},
+		{Suit: SuitDiamond, Rank: Rank10, Copy: 1},
+	}
+	groups := AnalyzePlay(cards, trumpSuit, level)
+	for _, g := range groups {
+		if g.IsPair {
+			t.Errorf("Spade10 + Diamond10 should NOT be a pair (different suits, both off-level rank=%d)", level)
+		}
+	}
+
+	// Same rank AND same suit — SHOULD be a pair
+	cards2 := []Card{
+		{Suit: SuitDiamond, Rank: Rank10, Copy: 0},
+		{Suit: SuitDiamond, Rank: Rank10, Copy: 1},
+	}
+	groups2 := AnalyzePlay(cards2, trumpSuit, level)
+	isPair := false
+	for _, g := range groups2 {
+		if g.IsPair {
+			isPair = true
+			break
+		}
+	}
+	if !isPair {
+		t.Error("Diamond10 + Diamond10 should be detected as a pair (same suit)")
+	}
+}
+
+func TestPlayTypeRequiresSameActualSuit(t *testing.T) {
+	level := Rank2
+	trumpSuit := SuitDiamond
+
+	// Two cards of same rank, different suits — playType should NOT be pair (2)
+	cards := []Card{
+		{Suit: SuitHeart, Rank: Rank2, Copy: 0},
+		{Suit: SuitDiamond, Rank: Rank2, Copy: 1},
+	}
+	pt := playType(cards, trumpSuit, level)
+	if pt == 2 {
+		t.Error("playType(红桃2+方块2) should NOT return 2 (pair) — different suits")
+	}
+}
+
+func TestFindPairsInCardsRequiresSameActualSuit(t *testing.T) {
+	level := Rank2
+	trumpSuit := SuitDiamond
+
+	cards := []Card{
+		{Suit: SuitHeart, Rank: Rank2, Copy: 0},
+		{Suit: SuitDiamond, Rank: Rank2, Copy: 1},
+	}
+	pairs := findPairsInCards(cards, trumpSuit, level)
+	if len(pairs) > 0 {
+		t.Error("findPairsInCards should NOT find pair for 红桃2+方块2 (different actual suits)")
+	}
+
+	// Same actual suit should still work
+	cards2 := []Card{
+		{Suit: SuitDiamond, Rank: Rank2, Copy: 0},
+		{Suit: SuitDiamond, Rank: Rank2, Copy: 1},
+	}
+	pairs2 := findPairsInCards(cards2, trumpSuit, level)
+	if len(pairs2) == 0 {
+		t.Error("findPairsInCards should find pair for 方块2+方块2 (same actual suit)")
+	}
+}
+
+func TestComparePlaysPairVsTwoLevelRankCards(t *testing.T) {
+	// Scenario from bug report: trump=Diamond, lead=一对7(Diamond),
+	// response=红桃2+方块2 (two different-suit level-rank cards when level=2)
+	level := Rank2
+	trumpSuit := SuitDiamond
+
+	lead := []Card{
+		{Suit: SuitDiamond, Rank: Rank7, Copy: 0},
+		{Suit: SuitDiamond, Rank: Rank7, Copy: 1},
+	}
+	response := []Card{
+		{Suit: SuitHeart, Rank: Rank2, Copy: 0},
+		{Suit: SuitDiamond, Rank: Rank2, Copy: 1},
+	}
+
+	leadSuit := EffectiveSuit(lead[0], trumpSuit, level)
+	cmp := comparePlays(lead, response, trumpSuit, level, leadSuit)
+	if cmp <= 0 {
+		t.Errorf("Lead pair should beat two level-rank cards of different suits: comparePlays=%d", cmp)
+	}
+
+	// Also test that the winner is correctly determined
+	plays := make([][]Card, 4)
+	plays[0] = lead
+	plays[1] = response
+	// Two passes for the other players
+	plays[2] = nil
+	plays[3] = nil
+	winner := DetermineTrickWinner(plays, trumpSuit, level)
+	if winner != 0 {
+		t.Errorf("Player 0 (lead pair) should win, got winner=%d", winner)
+	}
+}
+
+func TestFollowingNotForceMax(t *testing.T) {
+	// validateFollowing should accept ANY valid following play,
+	// not force the player to play the maximum card
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	// Lead: single spade K
+	lead := []Card{{Suit: SuitSpade, Rank: RankK, Copy: 0}}
+
+	// Hand has spade 7 and spade A
+	hand := []Card{
+		{Suit: SuitSpade, Rank: Rank7, Copy: 0},
+		{Suit: SuitSpade, Rank: RankA, Copy: 0},
+		{Suit: SuitDiamond, Rank: Rank5, Copy: 0},
+	}
+
+	// Play spade 7 (minimum, not max) — should be valid
+	playedMin := []Card{{Suit: SuitSpade, Rank: Rank7, Copy: 0}}
+	if !ValidatePlay(playedMin, lead, hand, nil, trumpSuit, level) {
+		t.Error("Playing spade 7 (not max) to follow spade K should be valid")
+	}
+
+	// Play spade A (max) — also valid
+	playedMax := []Card{{Suit: SuitSpade, Rank: RankA, Copy: 0}}
+	if !ValidatePlay(playedMax, lead, hand, nil, trumpSuit, level) {
+		t.Error("Playing spade A (max) to follow spade K should also be valid")
+	}
+}
+
+func TestValidateFollowingPairNotForceMax(t *testing.T) {
+	// When following a pair, should be able to play any valid pair, not necessarily max
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	// Lead: spade K pair
+	lead := []Card{
+		{Suit: SuitSpade, Rank: RankK, Copy: 0},
+		{Suit: SuitSpade, Rank: RankK, Copy: 1},
+	}
+
+	// Hand has spade 7 pair and spade A pair
+	hand := []Card{
+		{Suit: SuitSpade, Rank: Rank7, Copy: 0},
+		{Suit: SuitSpade, Rank: Rank7, Copy: 1},
+		{Suit: SuitSpade, Rank: RankA, Copy: 0},
+		{Suit: SuitSpade, Rank: RankA, Copy: 1},
+	}
+
+	// Play spade 7 pair (not max) — should be valid
+	playedMin := []Card{
+		{Suit: SuitSpade, Rank: Rank7, Copy: 0},
+		{Suit: SuitSpade, Rank: Rank7, Copy: 1},
+	}
+	if !ValidatePlay(playedMin, lead, hand, nil, trumpSuit, level) {
+		t.Error("Playing spade 7 pair (not max) to follow spade K pair should be valid")
+	}
+}

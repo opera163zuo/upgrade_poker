@@ -158,17 +158,22 @@ func analyzeSameSuit(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 		return nil
 	}
 
-	// Count cards by rank
-	rankCount := make(map[Rank]int)
+	// Count cards by (rank, actual suit) - only same rank AND same actual suit form a pair
+	type rsKey struct {
+		rank Rank
+		suit Suit
+	}
+	rsCount := make(map[rsKey]int)
 	for _, c := range cards {
-		rankCount[c.Rank]++
+		k := rsKey{c.Rank, c.Suit}
+		rsCount[k]++
 	}
 
-	// Find pairs (ranks with count >= 2)
+	// Pairs: only ranks with >= 2 cards of the SAME actual suit
 	pairs := make(map[Rank]bool)
-	for r, count := range rankCount {
-		if count >= 2 {
-			pairs[r] = true
+	for k, cnt := range rsCount {
+		if cnt >= 2 {
+			pairs[k.rank] = true
 		}
 	}
 
@@ -197,7 +202,7 @@ func analyzeSameSuit(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 	for _, tRanks := range tractors {
 		var tc []Card
 		for _, r := range tRanks {
-			tc = append(tc, getCardsOfRank(cards, r, 2)...)
+			tc = append(tc, getCardsOfRankSameSuit(cards, r)...)
 		}
 		result = append(result, CardGroup{
 			Cards:     tc,
@@ -209,7 +214,7 @@ func analyzeSameSuit(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 	for r := range pairs {
 		if !consumedByTractor[r] {
 			result = append(result, CardGroup{
-				Cards:  getCardsOfRank(cards, r, 2),
+				Cards:  getCardsOfRankSameSuit(cards, r),
 				IsPair: true,
 			})
 		}
@@ -614,29 +619,38 @@ func comparePlays(a, b []Card, trumpSuit Suit, level Rank, leadSuit Suit) int {
 	aIsTrump := isAllTrump(a, trumpSuit, level)
 	bIsTrump := isAllTrump(b, trumpSuit, level)
 
-	// Trump beats non-trump
-	if aIsTrump && !bIsTrump {
-		return 1
-	}
-	if !aIsTrump && bIsTrump {
-		return -1
-	}
-
-	// Both trump or both non-trump: compare play types, then best card
 	aType := playType(a, trumpSuit, level)
 	bType := playType(b, trumpSuit, level)
 
-	if aType != bType {
-		if aType > bType {
+	// If both are trump or both non-trump: compare purely by type then best card
+	if aIsTrump == bIsTrump {
+		if aType != bType {
+			if aType > bType {
+				return 1
+			}
+			return -1
+		}
+		// Same play type: compare best card
+		aBest := bestCardInPlay(a, trumpSuit, level, leadSuit)
+		bBest := bestCardInPlay(b, trumpSuit, level, leadSuit)
+		return CompareCards(aBest, bBest, trumpSuit, level, leadSuit)
+	}
+
+	// 毙牌 scenario: one side is trump, the other is non-trump
+	// The 毙牌 side must have AT LEAST the same structure type to win.
+	// E.g. a single trump card cannot 毙 a non-trump pair.
+	if aIsTrump && !bIsTrump {
+		// a (trump) is trying to 毙 b (non-trump)
+		if aType >= bType {
 			return 1
 		}
 		return -1
 	}
-
-	// Same play type: compare best card
-	aBest := bestCardInPlay(a, trumpSuit, level, leadSuit)
-	bBest := bestCardInPlay(b, trumpSuit, level, leadSuit)
-	return CompareCards(aBest, bBest, trumpSuit, level, leadSuit)
+	// !aIsTrump && bIsTrump
+	if bType >= aType {
+		return -1
+	}
+	return 1
 }
 
 // isAllTrump checks if all cards in a play are trump
@@ -655,15 +669,20 @@ func playType(cards []Card, trumpSuit Suit, level Rank) int {
 	if len(cards) < 2 {
 		return 1
 	}
-	// Count cards by effective rank within effective suit
-	rankCount := make(map[Rank]int)
+	// Count cards by (rank, actual suit) — only same rank AND same actual suit form a pair
+	type rsKey struct {
+		rank Rank
+		suit Suit
+	}
+	rsCount := make(map[rsKey]int)
 	for _, c := range cards {
-		rankCount[c.Rank]++
+		k := rsKey{c.Rank, c.Suit}
+		rsCount[k]++
 	}
 
 	// Count pairs
 	numPairs := 0
-	for _, count := range rankCount {
+	for _, count := range rsCount {
 		if count >= 2 {
 			numPairs++
 		}
@@ -672,9 +691,11 @@ func playType(cards []Card, trumpSuit Suit, level Rank) int {
 	if numPairs >= 2 {
 		// Check if pairs form a tractor (consecutive)
 		var pairRanks []Rank
-		for r, count := range rankCount {
-			if count >= 2 {
-				pairRanks = append(pairRanks, r)
+		pairSeen := make(map[Rank]bool)
+		for k, count := range rsCount {
+			if count >= 2 && !pairSeen[k.rank] {
+				pairRanks = append(pairRanks, k.rank)
+				pairSeen[k.rank] = true
 			}
 		}
 		// Check for at least one consecutive pair
@@ -747,6 +768,27 @@ func CalculateBottomMultiplier(winningPlay []Card, trumpSuit Suit, level Rank) i
 	}
 	return result
 }
+
+// getCardsOfRankSameSuit returns up to 2 cards of the given rank from the SAME actual suit.
+// Level-rank cards of different actual suits should not form a pair, so this helper
+// ensures pairs are only detected from the same suit.
+func getCardsOfRankSameSuit(cards []Card, rank Rank) []Card {
+	// Group by actual suit
+	suitCards := make(map[Suit][]Card)
+	for _, c := range cards {
+		if c.Rank == rank {
+			suitCards[c.Suit] = append(suitCards[c.Suit], c)
+		}
+	}
+	// Find a suit with at least 2 cards
+	for _, group := range suitCards {
+		if len(group) >= 2 {
+			return group[:2]
+		}
+	}
+	return nil
+}
+
 
 // isMaxGroup checks if a card group is unbeatable among all hands
 func isMaxGroup(g CardGroup, allHands [][]Card, trumpSuit Suit, level Rank) bool {

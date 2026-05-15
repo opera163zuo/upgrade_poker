@@ -255,14 +255,7 @@ func aiFollowSuit(player *Player, trick *Trick, leadSuit Suit, leadCards []Card,
 	// If lead is a single card
 	if needCount == 1 {
 		sortCardsByRank(suitCards)
-		// Try to play a card that beats the lead
-		leadCard := leadCards[0]
-		for _, c := range suitCards {
-			if CompareCards(c, leadCard, trumpSuit, level, leadSuit) > 0 {
-				return []Card{c}
-			}
-		}
-		// Can't beat it, play smallest
+		// Play smallest card of the lead suit — just follow legally, not forced max
 		return []Card{suitCards[0]}
 	}
 
@@ -623,7 +616,7 @@ func findPairsInHand(hand []Card, trumpSuit Suit, level Rank, trumpOnly bool) []
 
 // findPairsInCards finds all pairs in a set of cards
 func findPairsInCards(cards []Card, trumpSuit Suit, level Rank) [][]Card {
-	// Group by effective suit and rank
+	// Group by actual suit and rank — only same rank AND same actual suit form a pair
 	type key struct {
 		suit Suit
 		rank Rank
@@ -632,8 +625,7 @@ func findPairsInCards(cards []Card, trumpSuit Suit, level Rank) [][]Card {
 	cardMap := make(map[key][]Card)
 
 	for _, c := range cards {
-		s := EffectiveSuit(c, trumpSuit, level)
-		k := key{s, c.Rank}
+		k := key{c.Suit, c.Rank}
 		count[k]++
 		cardMap[k] = append(cardMap[k], c)
 	}

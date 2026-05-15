@@ -483,14 +483,9 @@ func (g *Game) PlayHand() bool {
 		winnerTeam := PlayerTeam(winner)
 		g.TeamScore[winnerTeam] += points
 
-		// Show trick result briefly before continuing
+		// Clear trick display and continue directly (no overlay)
 		g.uiTrickWinner = winner
 		g.uiTrickPoints = points
-		g.uiMessage = fmt.Sprintf("本轮 %s 赢得 %d 分", formatPosition(winner), points)
-		g.setPhase(baseui.PhaseWaitTrick)
-		g.ui.SleepForRedraw(1500 * time.Millisecond)
-
-		// Clear trick display and continue
 		g.uiMessage = ""
 		g.CurrentTrick = nil
 		leadPlayer = winner
