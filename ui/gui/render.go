@@ -5,7 +5,6 @@ import (
 	"image/color"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
@@ -94,31 +93,29 @@ type southSlot struct {
 // 5 个状态格从上到下纵列排列在右侧面板内
 
 func (g *GUI) drawInfoBar(screen *ebiten.Image, view baseui.TableView, selected map[int]bool) {
+	_ = selected
 	baseX, baseY := g.sc.PX(RefInfoBarX), g.sc.PX(RefInfoBarY)
 	pad := g.sc.PXAbsolute(8)
-	cellW := g.sc.PXAbsolute(RefInfoBarW) - pad*2 // 单元格宽 = 面板宽 - 左右内边距
-	cellH := g.sc.PXAbsolute(24)                     // 单元格高
+	cellW := g.sc.PXAbsolute(RefInfoBarW) - pad*2
+	cellH := g.sc.PXAbsolute(24)
 	gap := g.sc.PXAbsolute(3)
 	boxX := baseX + pad
-	y := baseY + g.sc.PXAbsolute(4) // 距面板顶 4px
+	y := baseY + g.sc.PXAbsolute(4)
 
-	// 原版状态格颜色
 	whiteBg := color.RGBA{0xff, 0xff, 0xff, 0xff}
 	blackBorder := color.RGBA{0x00, 0x00, 0x00, 0xff}
 	redText := color.RGBA{0xcc, 0x00, 0x00, 0xff}
 	blueText := color.RGBA{0x00, 0x00, 0xaa, 0xff}
 	blackText := color.RGBA{0x00, 0x00, 0x00, 0xff}
 
-	// ── Cell 1: 叫主方位 ──
-	bidderText := "→" + view.BidderDirection
-	b1Color := blackText
-	if view.IsMyTeamBidder && view.BidderDirection != "---" {
-		b1Color = redText
+	bidderText := view.BidderDirection
+	if bidderText == "" || bidderText == "---" {
+		bidderText = "—"
 	}
-	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, bidderText, b1Color, whiteBg, blackBorder)
-	y += cellH + gap
-
-	// ── Cell 2: 主花色 ──
+	bidderColor := blackText
+	if view.IsMyTeamBidder && view.BidderDirection != "---" {
+		bidderColor = redText
+	}
 	suitSymbol := view.BidderSuitSymbol
 	if suitSymbol == "" {
 		suitSymbol = "—"
@@ -127,51 +124,23 @@ func (g *GUI) drawInfoBar(screen *ebiten.Image, view baseui.TableView, selected 
 	if suitSymbol == "♦" || suitSymbol == "♥" {
 		suitColor = redText
 	}
-	g.drawSuitStatusCell(screen, boxX, y, cellW, cellH, suitSymbol, suitColor, whiteBg, blackBorder)
+	g.drawBidderStatusCell(screen, boxX, y, cellW, cellH,
+		bidderText, bidderColor, suitSymbol, suitColor, whiteBg, blackBorder)
 	y += cellH + gap
 
-	// ── Cell 3: 级牌 / 己家态 ──
-	var levelText string
-	var levelColor color.Color
-	if view.IsMyTeamBidder && view.IsMyTeamDealer {
-		levelText = "己家" + view.DealerLevel
-		levelColor = redText   // 己家叫主+己家当庄 → 红色强调
-	} else {
-		levelText = view.DealerLevel
-		levelColor = blueText
+	levelText := "己家" + view.DealerLevel
+	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, levelText, redText, whiteBg, blackBorder)
+	y += cellH + gap
+
+	opponentLevel := view.OpponentLevel
+	if opponentLevel == "" {
+		opponentLevel = view.DealerLevel
 	}
-	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, levelText, levelColor, whiteBg, blackBorder)
+	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, "敌家"+opponentLevel, blueText, whiteBg, blackBorder)
 	y += cellH + gap
 
-	// ── Cell 4: 敌家态 ──
-	var dealerText string
-	var dealerColor color.Color
-	if view.IsMyTeamDealer {
-		dealerText = "己家" + view.DealerLevel
-		dealerColor = blueText  // 己家当庄 → 蓝色（己方庄家=信息性）
-	} else {
-		dealerText = "敌家" + view.DealerLevel
-		dealerColor = redText   // 敌家当庄 → 红色警示
-	}
-	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, dealerText, dealerColor, whiteBg, blackBorder)
-	y += cellH + gap
-
-	// ── Cell 5: 闲家得分 ──
 	scoreText := fmt.Sprintf("%d分", view.NonDealerScore)
 	g.drawOldStatusBox(screen, boxX, y, cellW, cellH, scoreText, redText, whiteBg, blackBorder)
-	y += cellH + gap
-
-	// 轮次与手牌信息（面板底部）
-	line2 := fmt.Sprintf("R%d %d|%d|%d|%d %s",
-		view.TrickCount+1,
-		view.Players[0].HandCount, view.Players[1].HandCount,
-		view.Players[2].HandCount, view.Players[3].HandCount,
-		g.statusLine(view, selected))
-
-	g.physText(screen, line2,
-		baseX+g.sc.PXAbsolute(5),
-		y+g.sc.PXAbsolute(8),
-		color.RGBA{0x33, 0x33, 0x33, 0xff})
 }
 
 // drawOldStatusBox 原版 Win32 风格状态格：白底、黑硬边框、无阴影
@@ -184,6 +153,38 @@ func (g *GUI) drawOldStatusBox(screen *ebiten.Image, x, y, w, h int,
 	textX := x + g.sc.PXAbsolute(5)
 	textY := y + h/2 + int(g.sc.FontSize()*0.33)
 	g.physText(screen, label, textX, textY, textColor)
+}
+
+func (g *GUI) drawBidderStatusCell(screen *ebiten.Image, x, y, w, h int,
+	direction string, directionColor color.Color, suitSymbol string, suitColor color.Color, fill, border color.Color) {
+
+	resetFillRect(screen, x, y, w, h, fill)
+	resetStrokeRect(screen, x, y, w, h, 1, border)
+
+	textX := x + g.sc.PXAbsolute(5)
+	textY := y + h/2 + int(g.sc.FontSize()*0.33)
+	g.physText(screen, direction, textX, textY, directionColor)
+
+	if icon := suitIconImage(suitSymbol); icon != nil {
+		iconSize := h - g.sc.PXAbsolute(6)
+		if iconSize < g.sc.PXAbsolute(12) {
+			iconSize = g.sc.PXAbsolute(12)
+		}
+		iconX := x + w - iconSize - g.sc.PXAbsolute(4)
+		iconY := y + (h-iconSize)/2
+		op := &ebiten.DrawImageOptions{}
+		sw, sh := icon.Bounds().Dx(), icon.Bounds().Dy()
+		op.GeoM.Scale(float64(iconSize)/float64(sw), float64(iconSize)/float64(sh))
+		op.GeoM.Translate(float64(iconX), float64(iconY))
+		screen.DrawImage(icon, op)
+		return
+	}
+
+	g.physText(screen, suitSymbol, x+w-g.sc.PXAbsolute(18), textY, suitColor)
+}
+
+func suitIconImage(symbol string) *ebiten.Image {
+	return SuitIcon(symbol)
 }
 
 func (g *GUI) drawLevelPairPhys(screen *ebiten.Image, x, y, w, h int,
@@ -251,32 +252,10 @@ func (g *GUI) drawEast(screen *ebiten.Image, view baseui.TableView) {
 }
 
 func (g *GUI) drawSeatLabelPhys(screen *ebiten.Image, pv baseui.PlayerView, x, y int) {
-	label := pv.Name
-	if pv.IsDealer {
-		label += " ★"
-	}
-	if pv.IsBidder {
-		label += " 🃏" // bidder indicator
-	}
-	if pv.IsThinking {
-		dots := strings.Repeat(".", int(time.Now().UnixMilli()/350)%3+1)
-		label += " 思考中" + dots
-	}
-	padX := g.sc.PXAbsolute(8)
-	padY := g.sc.PXAbsolute(3)
-
-	if pv.IsBidder {
-		// White background, red text for bidder
-		g.physTextBadge(screen, label, x+padX, y, padX, padY,
-			color.RGBA{0xff, 0xff, 0xff, 0xff},
-			color.RGBA{0xcc, 0x00, 0x00, 0xff},
-			color.RGBA{0xcc, 0x00, 0x00, 0xff})
-	} else {
-		g.physTextBadge(screen, label, x+padX, y, padX, padY,
-			color.RGBA{0x0d, 0x17, 0x22, 0xc8},
-			color.RGBA{0x9f, 0xb8, 0xc4, 0xff},
-			color.White)
-	}
+	_ = screen
+	_ = pv
+	_ = x
+	_ = y
 }
 
 func (g *GUI) drawCenter(screen *ebiten.Image, view baseui.TableView) {
@@ -315,7 +294,6 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 	if view.Phase == baseui.PhaseBidding {
 		biddingRaise = g.biddingRaisedCards(view)
 	}
-	g.physText(screen, pv.Name, g.sc.PX(236), g.sc.PX(328), color.White)
 
 	var slots []southSlot
 	slots = g.southSlots(pv.HandCards, selected, biddingRaise, view.TrumpSuit)
@@ -570,7 +548,6 @@ func bidSuitToIconSymbol(suit string) string {
 	}
 }
 
-
 // ----- 菜单栏 -------------------------------------------------------------
 
 func (g *GUI) drawMenuBar(screen *ebiten.Image, view baseui.TableView) {
@@ -582,7 +559,7 @@ func (g *GUI) drawMenuBar(screen *ebiten.Image, view baseui.TableView) {
 		g.sc.PXAbsolute(RefWidth), menuH, 1,
 		color.RGBA{0x88, 0x88, 0x88, 0xff})
 
-	startEnabled := view.Phase == baseui.PhaseWelcome || view.Phase == baseui.PhaseGameOver
+	startEnabled := view.Phase == baseui.PhaseWelcome || view.Phase == baseui.PhaseGameOver || view.Phase == baseui.PhaseHandResult
 	restartEnabled := view.Phase != baseui.PhaseWelcome
 
 	g.drawTopMenuButton(screen, g.sc.PX(8), g.sc.PX(3),
@@ -611,7 +588,7 @@ func (g *GUI) drawTopMenuButton(screen *ebiten.Image, x, y, w, h int,
 
 	g.st.mu.Lock()
 	g.st.buttonRects = append(g.st.buttonRects, buttonRect{
-		Rect: Rect{X: x, Y: y, W: w, H: h},
+		Rect:    Rect{X: x, Y: y, W: w, H: h},
 		action:  action,
 		enabled: enabled,
 	})
@@ -702,7 +679,7 @@ func (g *GUI) drawActionButtonPhys(screen *ebiten.Image, x, y, w, h int,
 
 	g.st.mu.Lock()
 	g.st.buttonRects = append(g.st.buttonRects, buttonRect{
-		Rect: Rect{X: x, Y: y, W: w, H: h},
+		Rect:    Rect{X: x, Y: y, W: w, H: h},
 		action:  action,
 		enabled: enabled,
 	})
@@ -879,7 +856,7 @@ func (g *GUI) drawBidSuitButtonPhys(screen *ebiten.Image, x, y, size int,
 	g.st.mu.Lock()
 	g.st.buttonRects = append(g.st.buttonRects, buttonRect{
 		Rect: Rect{X: x, Y: y, W: size, H: size},
-		action:  baseui.UIAction{Type: baseui.ActionSelectBid,
+		action: baseui.UIAction{Type: baseui.ActionSelectBid,
 			BidType: choice.Type, BidSuit: choice.Suit},
 		enabled: enabled,
 	})
