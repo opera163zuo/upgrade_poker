@@ -935,9 +935,9 @@ func CalculateTrickPoints(plays [][]Card) int {
 
 // CalculateBottomMultiplier calculates the bottom card score multiplier
 // Based on the last trick's winning play structure.
-// Rule: 最后一墩出几对赢就翻几倍 (2x per pair).
-// For 4-deck: each pair or triple or quadruple counts as one multiplier unit.
-// Multiplier = 2^(number of matched groups: pairs/triples/quads in winning play).
+// Rule: 底牌倍率 = 最后一墩所出牌被分解的组数（每组翻一倍）
+// Multiplier = 2 ^ (total number of groups in the winning play).
+// Each group — single, pair, triple, quad, or tractor — counts as 1 multiplier unit.
 func CalculateBottomMultiplier(winningPlay []Card, trumpSuit Suit, level Rank) int {
 	if len(winningPlay) == 0 {
 		return 2 // default 2x
@@ -948,22 +948,10 @@ func CalculateBottomMultiplier(winningPlay []Card, trumpSuit Suit, level Rank) i
 	if numGroups == 0 {
 		return 2
 	}
-	// If a single card is played, multiplier = 2
-	if numGroups == 1 && groups[0].IsSingle {
-		return 2
-	}
 
-	// Count all non-single groups: pairs, triples, quads, tractors each count as 1 unit.
-	totalUnits := 0
-	for _, g := range groups {
-		if !g.IsSingle {
-			totalUnits++
-		}
-	}
-
-	// Multiplier = 2 ^ totalUnits
+	// Multiplier = 2 ^ numGroups
 	result := 1
-	for i := 0; i < totalUnits; i++ {
+	for i := 0; i < numGroups; i++ {
 		result *= 2
 	}
 	if result < 2 {

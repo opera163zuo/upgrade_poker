@@ -317,50 +317,58 @@ func TestE3_BottomMultiplier(t *testing.T) {
 	level := Rank10
 	trumpSuit := SuitHeart
 
-	// NOTE: Multiplier = 2^(number of non-single CardGroups in winning play).
-	// Each pair/triple/quad/tractor counts as 1 unit.
-	// Tractor detection depends on level: with level=10, A(14) and K(13) ARE consecutive (skipping 10),
-	// but 4→6 is NOT consecutive because level-10 ≠ 5, so rank 5 is between them.
+	// Rule: 底牌倍率 = 最后一墩所出牌被分解的组数（每组翻一倍）
+	// Multiplier = 2 ^ (total number of AnalyzePlay CardGroups).
+	// Each group — whether single, pair, triple, quad, or tractor — counts as 1 unit.
 	tests := []struct {
 		name     string
 		cards    []Card
 		expected int
 	}{
+		// 单张: 1 group → 2^1 = 2x
 		{"Single card", []Card{{Suit: SuitSpade, Rank: RankA, Copy: 0}}, 2},
-		{"One pair", []Card{{Suit: SuitSpade, Rank: RankA, Copy: 0}, {Suit: SuitSpade, Rank: RankA, Copy: 1}}, 2},
-		// AA+KK (A=14, K=13): consecutive when level=10 → 1 tractor group → 2x
-		{"Two pairs merge into tractor", []Card{
-			{Suit: SuitSpade, Rank: RankA, Copy: 0}, {Suit: SuitSpade, Rank: RankA, Copy: 1},
-			{Suit: SuitSpade, Rank: RankK, Copy: 0}, {Suit: SuitSpade, Rank: RankK, Copy: 1},
+		// 一对: 1 group → 2^1 = 2x
+		{"One pair", []Card{
+			{Suit: SuitSpade, Rank: RankA, Copy: 0},
+			{Suit: SuitSpade, Rank: RankA, Copy: 1},
 		}, 2},
-		// AA+KK+QQ (Q=12,K=13,A=14): all consecutive when level=10 → 1 tractor group → 2x
-		{"Three pairs merge into tractor", []Card{
+		// 两对 (AA+JJ): A=14, J=11, not consecutive → 2 pairs → 2 groups → 2^2 = 4x
+		{"Two pairs", []Card{
 			{Suit: SuitSpade, Rank: RankA, Copy: 0}, {Suit: SuitSpade, Rank: RankA, Copy: 1},
-			{Suit: SuitSpade, Rank: RankK, Copy: 0}, {Suit: SuitSpade, Rank: RankK, Copy: 1},
-			{Suit: SuitSpade, Rank: RankQ, Copy: 0}, {Suit: SuitSpade, Rank: RankQ, Copy: 1},
-		}, 2},
-		{"Empty play", []Card{}, 2},
-		// 4+4+6+6: with level=10, 4→6 NOT consecutive → 2 separate pair groups → 4x
-		{"Two non-consecutive pairs", []Card{
-			{Suit: SuitSpade, Rank: Rank4, Copy: 0}, {Suit: SuitSpade, Rank: Rank4, Copy: 1},
-			{Suit: SuitSpade, Rank: Rank6, Copy: 0}, {Suit: SuitSpade, Rank: Rank6, Copy: 1},
+			{Suit: SuitSpade, Rank: RankJ, Copy: 0}, {Suit: SuitSpade, Rank: RankJ, Copy: 1},
 		}, 4},
-		// 4+4+6+6+8+8+9+9: pair(4)+pair(6)+tractor(8,9) = 3 groups → 8x
-		{"Two pairs + one pair-tractor", []Card{
-			{Suit: SuitSpade, Rank: Rank4, Copy: 0}, {Suit: SuitSpade, Rank: Rank4, Copy: 1},
-			{Suit: SuitSpade, Rank: Rank6, Copy: 0}, {Suit: SuitSpade, Rank: Rank6, Copy: 1},
+		// 三对 (AA+JJ+88): A=14, J=11, 8=8, all non-consecutive → 3 groups → 2^3 = 8x
+		{"Three pairs", []Card{
+			{Suit: SuitSpade, Rank: RankA, Copy: 0}, {Suit: SuitSpade, Rank: RankA, Copy: 1},
+			{Suit: SuitSpade, Rank: RankJ, Copy: 0}, {Suit: SuitSpade, Rank: RankJ, Copy: 1},
+			{Suit: SuitSpade, Rank: Rank8, Copy: 0}, {Suit: SuitSpade, Rank: Rank8, Copy: 1},
+		}, 8},
+		// 空牌: default 2x
+		{"Empty play", []Card{}, 2},
+		// 一对拖拉机 (8,9): consecutive → 1 tractor group → 2^1 = 2x
+		{"One pair-tractor", []Card{
 			{Suit: SuitSpade, Rank: Rank8, Copy: 0}, {Suit: SuitSpade, Rank: Rank8, Copy: 1},
 			{Suit: SuitSpade, Rank: Rank9, Copy: 0}, {Suit: SuitSpade, Rank: Rank9, Copy: 1},
-		}, 8},
-		// A (single, ignored) + KK (pair) → 1 unit → 2x
+		}, 2},
+		// 两对拖拉机 ([3,4] + [7,8]): 2 separate consecutive sequences → 2 tractor groups → 2^2 = 4x
+		{"Two pair-tractors", []Card{
+			{Suit: SuitSpade, Rank: Rank3, Copy: 0}, {Suit: SuitSpade, Rank: Rank3, Copy: 1},
+			{Suit: SuitSpade, Rank: Rank4, Copy: 0}, {Suit: SuitSpade, Rank: Rank4, Copy: 1},
+			{Suit: SuitSpade, Rank: Rank7, Copy: 0}, {Suit: SuitSpade, Rank: Rank7, Copy: 1},
+			{Suit: SuitSpade, Rank: Rank8, Copy: 0}, {Suit: SuitSpade, Rank: Rank8, Copy: 1},
+		}, 4},
+		// 单+对混合 (A + KK): 2 groups (single + pair) → 2^2 = 4x
 		{"Single + pair", []Card{
 			{Suit: SuitSpade, Rank: RankA, Copy: 0},
-			{Suit: SuitSpade, Rank: RankK, Copy: 0}, {Suit: SuitSpade, Rank: RankK, Copy: 1},
-		}, 2},
+			{Suit: SuitSpade, Rank: RankK, Copy: 0},
+			{Suit: SuitSpade, Rank: RankK, Copy: 1},
+		}, 4},
+		// 四同点: 1 group → 2^1 = 2x
 		{"One quad", []Card{
 			{Suit: SuitSpade, Rank: RankA, Copy: 0}, {Suit: SuitSpade, Rank: RankA, Copy: 1},
 			{Suit: SuitSpade, Rank: RankA, Copy: 2}, {Suit: SuitSpade, Rank: RankA, Copy: 3},
 		}, 2},
+		// 三同点: 1 group → 2^1 = 2x
 		{"One triple", []Card{
 			{Suit: SuitSpade, Rank: RankA, Copy: 0}, {Suit: SuitSpade, Rank: RankA, Copy: 1},
 			{Suit: SuitSpade, Rank: RankA, Copy: 2},
