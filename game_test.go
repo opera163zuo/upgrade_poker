@@ -1018,3 +1018,211 @@ func TestValidateFollowingPairNotForceMax(t *testing.T) {
 		t.Error("Playing spade 7 pair (not max) to follow spade K pair should be valid")
 	}
 }
+
+// --- 4-Deck Multi-Pair Tests ---
+
+func TestMultiPairDetectionSameRankSuit(t *testing.T) {
+	// 4 copies of the same card (same rank + same suit) should be detected as 2 pairs
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	cards := []Card{
+		{Suit: SuitSpade, Rank: RankA, Copy: 0},
+		{Suit: SuitSpade, Rank: RankA, Copy: 1},
+		{Suit: SuitSpade, Rank: RankA, Copy: 2},
+		{Suit: SuitSpade, Rank: RankA, Copy: 3},
+	}
+
+	groups := AnalyzePlay(cards, trumpSuit, level)
+
+	pairCount := 0
+	singleCount := 0
+	for _, g := range groups {
+		if g.IsPair {
+			pairCount++
+		}
+		if g.IsSingle {
+			singleCount++
+		}
+	}
+	if pairCount != 2 {
+		t.Errorf("Expected 2 pair groups from 4 copies of same card, got %d", pairCount)
+	}
+	if singleCount != 0 {
+		t.Errorf("Expected 0 singles from 4 copies of same card, got %d", singleCount)
+	}
+	totalGroupCards := 0
+	for _, g := range groups {
+		totalGroupCards += len(g.Cards)
+	}
+	if totalGroupCards != 4 {
+		t.Errorf("Expected total 4 cards in groups, got %d", totalGroupCards)
+	}
+}
+
+func TestMultiPairLeadValid(t *testing.T) {
+	// Leading with 2 pairs (4 cards of same rank+suit) should be valid
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	// 4 copies of SpadeA = 2 pairs
+	cards := []Card{
+		{Suit: SuitSpade, Rank: RankA, Copy: 0},
+		{Suit: SuitSpade, Rank: RankA, Copy: 1},
+		{Suit: SuitSpade, Rank: RankA, Copy: 2},
+		{Suit: SuitSpade, Rank: RankA, Copy: 3},
+	}
+
+	hand := make([]Card, len(cards))
+	copy(hand, cards)
+	otherHands := [][]Card{
+		{{Suit: SuitClub, Rank: RankK, Copy: 0}},
+		{{Suit: SuitDiamond, Rank: RankK, Copy: 0}},
+		{},
+	}
+
+	if !ValidatePlay(cards, nil, hand, otherHands, trumpSuit, level) {
+		t.Error("Leading with 2 pairs (4 same cards) should be valid")
+	}
+
+	// playType should detect 2 pairs
+	pt := playType(cards, trumpSuit, level)
+	if pt != 2 {
+		t.Errorf("playType(4 copies) = %d, expected 2 (pair level, 2 pairs)", pt)
+	}
+}
+
+func TestMultiPairNotTractor(t *testing.T) {
+	// 4 copies of same card (same rank+suit) should NOT be a tractor
+	// (need consecutive ranks for tractor)
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	cards := []Card{
+		{Suit: SuitSpade, Rank: RankA, Copy: 0},
+		{Suit: SuitSpade, Rank: RankA, Copy: 1},
+		{Suit: SuitSpade, Rank: RankA, Copy: 2},
+		{Suit: SuitSpade, Rank: RankA, Copy: 3},
+	}
+
+	groups := AnalyzePlay(cards, trumpSuit, level)
+	for _, g := range groups {
+		if g.IsTractor {
+			t.Error("4 copies of same rank+suit should NOT be detected as a tractor")
+			return
+		}
+	}
+}
+
+func TestMultiPairFollowStructure(t *testing.T) {
+	// Leading 2 pairs (4 cards), follower with 4 copies of same rank should match
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	// Lead: 2 pairs of SpadeK
+	lead := []Card{
+		{Suit: SuitSpade, Rank: RankK, Copy: 0},
+		{Suit: SuitSpade, Rank: RankK, Copy: 1},
+		{Suit: SuitSpade, Rank: RankK, Copy: 2},
+		{Suit: SuitSpade, Rank: RankK, Copy: 3},
+	}
+
+	// Follower has 4 Spade7 = 2 pairs of Spade7
+	hand := []Card{
+		{Suit: SuitSpade, Rank: Rank7, Copy: 0},
+		{Suit: SuitSpade, Rank: Rank7, Copy: 1},
+		{Suit: SuitSpade, Rank: Rank7, Copy: 2},
+		{Suit: SuitSpade, Rank: Rank7, Copy: 3},
+	}
+
+	// Play all 4 Spade7 — should be valid following play (same count, same suit)
+	played := []Card{
+		{Suit: SuitSpade, Rank: Rank7, Copy: 0},
+		{Suit: SuitSpade, Rank: Rank7, Copy: 1},
+		{Suit: SuitSpade, Rank: Rank7, Copy: 2},
+		{Suit: SuitSpade, Rank: Rank7, Copy: 3},
+	}
+
+	if !ValidatePlay(played, lead, hand, nil, trumpSuit, level) {
+		t.Error("Following 2-pair lead with 2 pairs should be valid")
+	}
+}
+
+func TestMultiPairSeparateGroups(t *testing.T) {
+	// 2 pairs of SpadeA + normal pair of SpadeK:
+	// A and K are consecutive ranks, so this forms 1 tractor (KK AA) + 1 remaining pair (AA)
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	cards := []Card{
+		{Suit: SuitSpade, Rank: RankA, Copy: 0},
+		{Suit: SuitSpade, Rank: RankA, Copy: 1},
+		{Suit: SuitSpade, Rank: RankA, Copy: 2},
+		{Suit: SuitSpade, Rank: RankA, Copy: 3},
+		{Suit: SuitSpade, Rank: RankK, Copy: 0},
+		{Suit: SuitSpade, Rank: RankK, Copy: 1},
+	}
+
+	groups := AnalyzePlay(cards, trumpSuit, level)
+
+	totalCards := 0
+	tractorCount := 0
+	pairCount := 0
+	for _, g := range groups {
+		totalCards += len(g.Cards)
+		if g.IsTractor {
+			tractorCount++
+		}
+		if g.IsPair {
+			pairCount++
+		}
+	}
+	// A and K are consecutive: 1 tractor (KK AA) + 1 remaining pair (AA) = 2 groups, 6 cards
+	if tractorCount != 1 {
+		t.Errorf("Expected 1 tractor from consecutive A+K pairs, got %d", tractorCount)
+	}
+	if pairCount != 1 {
+		t.Errorf("Expected 1 remaining pair of SpadeA, got %d", pairCount)
+	}
+	if totalCards != 6 {
+		t.Errorf("Expected 6 total cards in groups, got %d", totalCards)
+	}
+}
+
+
+func TestFindPairsMultiCard(t *testing.T) {
+	// Test that findPairsInCards returns 2 pairs for 4 copies
+	level := Rank10
+	trumpSuit := SuitHeart
+
+	cards := []Card{
+		{Suit: SuitSpade, Rank: RankA, Copy: 0},
+		{Suit: SuitSpade, Rank: RankA, Copy: 1},
+		{Suit: SuitSpade, Rank: RankA, Copy: 2},
+		{Suit: SuitSpade, Rank: RankA, Copy: 3},
+	}
+
+	pairs := findPairsInCards(cards, trumpSuit, level)
+	if len(pairs) != 2 {
+		t.Errorf("Expected 2 pairs from 4 copies of same card, got %d", len(pairs))
+	}
+	for i, p := range pairs {
+		if len(p) != 2 {
+			t.Errorf("Pair %d has %d cards, expected 2", i, len(p))
+		}
+	}
+
+	// Verify all 4 cards are covered and no duplicates
+	seen := make(map[Card]bool)
+	for _, p := range pairs {
+		for _, c := range p {
+			if seen[c] {
+				t.Errorf("Card %v appears in multiple pairs", c)
+			}
+			seen[c] = true
+		}
+	}
+	if len(seen) != 4 {
+		t.Errorf("Expected 4 unique cards across pairs, got %d", len(seen))
+	}
+}

@@ -633,9 +633,12 @@ func findPairsInCards(cards []Card, trumpSuit Suit, level Rank) [][]Card {
 	var pairs [][]Card
 	for k, c := range count {
 		if c >= 2 {
-			p := make([]Card, 2)
-			copy(p, cardMap[k][:2])
-			pairs = append(pairs, p)
+			numPairs := c / 2
+			for i := 0; i < numPairs; i++ {
+				p := make([]Card, 2)
+				copy(p, cardMap[k][i*2:(i+1)*2])
+				pairs = append(pairs, p)
+			}
 		}
 	}
 

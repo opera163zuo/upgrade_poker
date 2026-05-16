@@ -153,6 +153,8 @@ func AnalyzePlay(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 }
 
 // analyzeSameSuit analyzes cards of the same effective suit into groups
+// Supports 4-deck: with 4 copies of the same card (count >= 4), produces
+// multiple pair groups (count/2 pairs per {suit,rank}).
 func analyzeSameSuit(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 	if len(cards) == 0 {
 		return nil
@@ -169,12 +171,23 @@ func analyzeSameSuit(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 		rsCount[k]++
 	}
 
-	// Pairs: only ranks with >= 2 cards of the SAME actual suit
-	pairs := make(map[Rank]bool)
+	// Build pair info: for each (rank,suit) with count>=2, track how many pairs (count/2)
+	type pairSlot struct {
+		rank  Rank
+		suit  Suit
+		pairs int // count/2 = number of pairs from this {rank,suit}
+	}
+	var pairSlots []pairSlot
 	for k, cnt := range rsCount {
 		if cnt >= 2 {
-			pairs[k.rank] = true
+			pairSlots = append(pairSlots, pairSlot{k.rank, k.suit, cnt / 2})
 		}
+	}
+
+	// Build pair ranks map for tractor detection (1 entry per unique rank)
+	pairs := make(map[Rank]bool)
+	for _, ps := range pairSlots {
+		pairs[ps.rank] = true
 	}
 
 	// Find tractors (consecutive pairs)
@@ -188,21 +201,28 @@ func analyzeSameSuit(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 	// Find tractors (consecutive pairs)
 	tractors := findTractors(pairRanks, trumpSuit, level)
 
-	// Track which ranks are consumed by tractors
-	consumedByTractor := make(map[Rank]bool)
-	for _, tRanks := range tractors {
-		for _, r := range tRanks {
-			consumedByTractor[r] = true
-		}
-	}
-
 	var result []CardGroup
+
+	// Track already-consumed cards to avoid returning the same card in multiple groups
+	consumedCards := make(map[Card]bool)
+
+	// Helper: return up to `count` unconsumed cards of the given rank
+	consumeRankCards := func(rank Rank, count int) []Card {
+		var out []Card
+		for _, c := range cards {
+			if c.Rank == rank && !consumedCards[c] && len(out) < count {
+				consumedCards[c] = true
+				out = append(out, c)
+			}
+		}
+		return out
+	}
 
 	// Add tractors
 	for _, tRanks := range tractors {
 		var tc []Card
 		for _, r := range tRanks {
-			tc = append(tc, getCardsOfRankSameSuit(cards, r)...)
+			tc = append(tc, consumeRankCards(r, 2)...) // 1 pair = 2 cards
 		}
 		result = append(result, CardGroup{
 			Cards:     tc,
@@ -210,13 +230,16 @@ func analyzeSameSuit(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 		})
 	}
 
-	// Add remaining pairs (not in tractors)
-	for r := range pairs {
-		if !consumedByTractor[r] {
-			result = append(result, CardGroup{
-				Cards:  getCardsOfRankSameSuit(cards, r),
-				IsPair: true,
-			})
+	// Add remaining pairs (not in tractors) — emit separate CardGroup for each available pair
+	for _, ps := range pairSlots {
+		for i := 0; i < ps.pairs; i++ {
+			cardsOut := consumeRankCards(ps.rank, 2)
+			if len(cardsOut) >= 2 {
+				result = append(result, CardGroup{
+					Cards:  cardsOut,
+					IsPair: true,
+				})
+			}
 		}
 	}
 
@@ -665,6 +688,7 @@ func isAllTrump(cards []Card, trumpSuit Suit, level Rank) bool {
 
 // playType returns the type strength of a play:
 // 3 = tractor (拖拉机), 2 = pair (对), 1 = singles (散牌)
+// For 4-deck: each {suit,rank} with count>=2 contributes count/2 pairs.
 func playType(cards []Card, trumpSuit Suit, level Rank) int {
 	if len(cards) < 2 {
 		return 1
@@ -680,11 +704,11 @@ func playType(cards []Card, trumpSuit Suit, level Rank) int {
 		rsCount[k]++
 	}
 
-	// Count pairs
+	// Count pairs (4-deck: each {suit,rank} with count>=2 contributes count/2 pairs)
 	numPairs := 0
 	for _, count := range rsCount {
 		if count >= 2 {
-			numPairs++
+			numPairs += count / 2
 		}
 	}
 
@@ -706,6 +730,9 @@ func playType(cards []Card, trumpSuit Suit, level Rank) int {
 				}
 			}
 		}
+		// Multi-pair: if the same rank has >= 4 cards (2+ pairs) and a consecutive rank
+		// also has >= 4 cards, that's a tractor, but playType=3 already covers this
+		// since numPairs >= 2 is satisfied.
 	}
 
 	if numPairs >= 1 && len(cards) == 2 {
@@ -769,10 +796,14 @@ func CalculateBottomMultiplier(winningPlay []Card, trumpSuit Suit, level Rank) i
 	return result
 }
 
-// getCardsOfRankSameSuit returns up to 2 cards of the given rank from the SAME actual suit.
+// getCardsOfRankSameSuit returns up to `limit` cards of the given rank from the SAME actual suit.
+// For 4-deck: when count >= 4, this can return 4+ cards to support multi-pair detection.
 // Level-rank cards of different actual suits should not form a pair, so this helper
 // ensures pairs are only detected from the same suit.
-func getCardsOfRankSameSuit(cards []Card, rank Rank) []Card {
+func getCardsOfRankSameSuit(cards []Card, rank Rank, limit int) []Card {
+	if limit <= 0 {
+		limit = 2
+	}
 	// Group by actual suit
 	suitCards := make(map[Suit][]Card)
 	for _, c := range cards {
@@ -780,10 +811,14 @@ func getCardsOfRankSameSuit(cards []Card, rank Rank) []Card {
 			suitCards[c.Suit] = append(suitCards[c.Suit], c)
 		}
 	}
-	// Find a suit with at least 2 cards
+	// Find a suit with at least 2 cards; return up to limit
 	for _, group := range suitCards {
 		if len(group) >= 2 {
-			return group[:2]
+			n := limit
+			if len(group) < n {
+				n = len(group)
+			}
+			return group[:n]
 		}
 	}
 	return nil
