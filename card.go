@@ -100,7 +100,7 @@ func (r Rank) String() string {
 type Card struct {
 	Suit Suit
 	Rank Rank
-	Copy int // 0 or 1 for two-deck distinction
+	Copy int // 0-3 for four-deck distinction
 }
 
 func (c Card) String() string {
@@ -134,14 +134,13 @@ func (c Card) Points() int {
 		return 0
 	}
 }
-
-// NewDeck creates a full two-deck set (108 cards)
+// NewDeck creates a full four-deck set (216 cards)
 func NewDeck() []Card {
-	deck := make([]Card, 0, 108)
+	deck := make([]Card, 0, 216)
 	suits := []Suit{SuitSpade, SuitHeart, SuitDiamond, SuitClub}
 	ranks := []Rank{Rank2, Rank3, Rank4, Rank5, Rank6, Rank7, Rank8, Rank9, Rank10, RankJ, RankQ, RankK, RankA}
 
-	for copy := 0; copy < 2; copy++ {
+	for copy := 0; copy < 4; copy++ {
 		for _, suit := range suits {
 			for _, rank := range ranks {
 				deck = append(deck, Card{Suit: suit, Rank: rank, Copy: copy})

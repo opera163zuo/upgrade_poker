@@ -8,8 +8,8 @@ import (
 
 func TestNewDeck(t *testing.T) {
 	deck := NewDeck()
-	if len(deck) != 108 {
-		t.Errorf("Expected 108 cards, got %d", len(deck))
+	if len(deck) != 216 {
+		t.Errorf("Expected 216 cards, got %d", len(deck))
 	}
 }
 
@@ -19,14 +19,14 @@ func TestDeal(t *testing.T) {
 
 	totalCards := 0
 	for _, p := range g.Players {
-		if len(p.Hand) != 25 {
-			t.Errorf("Expected 25 cards per player, got %d", len(p.Hand))
+		if len(p.Hand) != 52 {
+			t.Errorf("Expected 52 cards per player, got %d", len(p.Hand))
 		}
 		totalCards += len(p.Hand)
 	}
 	totalCards += len(g.BottomCards)
-	if totalCards != 108 {
-		t.Errorf("Expected 108 total cards, got %d", totalCards)
+	if totalCards != 216 {
+		t.Errorf("Expected 216 total cards, got %d", totalCards)
 	}
 	if len(g.BottomCards) != 8 {
 		t.Errorf("Expected 8 bottom cards, got %d", len(g.BottomCards))
@@ -183,7 +183,7 @@ func TestAIPlayNoCrash(t *testing.T) {
 		g.TeamScore = [2]int{0, 0}
 		leadPlayer := g.Dealer
 
-		for g.TrickCount < 25 {
+		for g.TrickCount < 52 {
 			level := g.DealerLevel()
 			trick := NewTrick(leadPlayer, g.TrumpSuit, level)
 			g.CurrentTrick = trick

@@ -138,7 +138,7 @@ func (g *Game) Deal() {
 	}
 
 	idx := 0
-	for round := 0; round < 25; round++ {
+	for round := 0; round < 52; round++ {
 		for player := 0; player < 4; player++ {
 			g.Players[player].AddCard(g.Deck[idx])
 			idx++
@@ -164,7 +164,7 @@ func (g *Game) DealAnimated() bool {
 	g.setPhase(baseui.PhaseDealing)
 
 	idx := 0
-	for round := 0; round < 25; round++ {
+	for round := 0; round < 52; round++ {
 		for player := 0; player < 4; player++ {
 			g.Players[player].AddCard(g.Deck[idx])
 			g.uiDealCounts[player]++
@@ -467,14 +467,14 @@ func (g *Game) humanPlayCards(player *Player, trick *Trick) ([]Card, bool) {
 	}
 }
 
-// PlayHand plays a complete hand (25 tricks)
+// PlayHand plays a complete hand (up to 52 tricks)
 func (g *Game) PlayHand() bool {
 	g.TrickCount = 0
 	g.TeamScore = [2]int{0, 0}
 
 	leadPlayer := g.Dealer
 
-	for g.TrickCount < 25 {
+	for g.TrickCount < 52 {
 		g.setPhase(baseui.PhasePlaying)
 		winner, restarted := g.PlayTrickFromLead(leadPlayer)
 		if restarted {
