@@ -537,31 +537,31 @@ func (g *Game) HandleUpgrade() bool {
 		upgradeTeam = dealerTeam
 		upgradeCount = 3
 		resultMsg = "大光！庄家方连升3级！"
-	case opponentScore < 40:
+	case opponentScore < 80: // 4-deck: doubled from 40
 		upgradeTeam = dealerTeam
 		upgradeCount = 2
 		resultMsg = "庄家方连升2级！"
-	case opponentScore < 80:
+	case opponentScore < 160: // 4-deck: doubled from 80
 		upgradeTeam = dealerTeam
 		upgradeCount = 1
 		resultMsg = "庄家方升1级！"
-	case opponentScore < 120:
+	case opponentScore < 240: // 4-deck: doubled from 120
 		upgradeCount = 0
 		newDealer = g.Dealer.Next()
 		resultMsg = "闲家上台！换庄！"
-	case opponentScore < 160:
+	case opponentScore < 320: // 4-deck: doubled from 160
 		upgradeTeam = opponentTeam
 		upgradeCount = 1
 		newDealer = g.Dealer.Next()
 		resultMsg = "闲家上台并升1级！"
-	case opponentScore < 200:
+	case opponentScore < 400: // 4-deck: doubled from 200
 		upgradeTeam = opponentTeam
 		upgradeCount = 2
 		newDealer = g.Dealer.Next()
 		resultMsg = "闲家上台并连升2级！"
 	default:
 		upgradeTeam = opponentTeam
-		upgradeCount = 2 + (opponentScore-200)/40
+		upgradeCount = 2 + (opponentScore-400)/80
 		newDealer = g.Dealer.Next()
 		resultMsg = fmt.Sprintf("闲家上台并连升%d级！", upgradeCount)
 	}
