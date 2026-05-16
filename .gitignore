@@ -14,3 +14,4 @@ upgrade_poker
 # OS
 .DS_Store
 Thumbs.db
+*.test

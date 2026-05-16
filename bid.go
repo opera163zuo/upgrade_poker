@@ -10,6 +10,7 @@ const (
 	BidSingleLevel                // 单张级牌 (single level rank)
 	BidPairLevel                  // 对级牌 (pair of level rank)
 	BidTripleLevel                // 三张级牌 (three of level rank)
+	BidQuadLevel                  // 四张级牌 (four of level rank)
 	BidPairJoker                  // 对王 (pair of jokers, no trump)
 )
 
@@ -23,6 +24,8 @@ func (b BidType) String() string {
 		return "对级牌"
 	case BidTripleLevel:
 		return "三张级牌"
+	case BidQuadLevel:
+		return "四张级牌"
 	case BidPairJoker:
 		return "对王(无主)"
 	default:
@@ -47,8 +50,10 @@ func BidPriority(bidType BidType) int {
 		return 2
 	case BidTripleLevel:
 		return 3
-	case BidPairJoker:
+	case BidQuadLevel:
 		return 4
+	case BidPairJoker:
+		return 5
 	default:
 		return 0
 	}
@@ -90,6 +95,14 @@ func CanBid(player *Player, level Rank) []Bid {
 				Suit:     suit,
 				Player:   player.Position,
 				Priority: BidPriority(BidTripleLevel),
+			})
+		}
+		if count >= 4 {
+			bids = append(bids, Bid{
+				Type:     BidQuadLevel,
+				Suit:     suit,
+				Player:   player.Position,
+				Priority: BidPriority(BidQuadLevel),
 			})
 		}
 	}

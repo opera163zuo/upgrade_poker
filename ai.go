@@ -614,6 +614,60 @@ func findPairsInHand(hand []Card, trumpSuit Suit, level Rank, trumpOnly bool) []
 	return findPairsInCards(hand, trumpSuit, level)
 }
 
+// findTriplesInCards finds all triples (3 cards same rank+suit) in a set of cards
+func findTriplesInCards(cards []Card, trumpSuit Suit, level Rank) [][]Card {
+	type key struct {
+		suit Suit
+		rank Rank
+	}
+	count := make(map[key]int)
+	cardMap := make(map[key][]Card)
+	for _, c := range cards {
+		k := key{c.Suit, c.Rank}
+		count[k]++
+		cardMap[k] = append(cardMap[k], c)
+	}
+	var triples [][]Card
+	for k, c := range count {
+		if c >= 3 {
+			numTriples := c / 3
+			for i := 0; i < numTriples; i++ {
+				t := make([]Card, 3)
+				copy(t, cardMap[k][i*3:(i+1)*3])
+				triples = append(triples, t)
+			}
+		}
+	}
+	return triples
+}
+
+// findQuadsInCards finds all quads (4 cards same rank+suit) in a set of cards
+func findQuadsInCards(cards []Card, trumpSuit Suit, level Rank) [][]Card {
+	type key struct {
+		suit Suit
+		rank Rank
+	}
+	count := make(map[key]int)
+	cardMap := make(map[key][]Card)
+	for _, c := range cards {
+		k := key{c.Suit, c.Rank}
+		count[k]++
+		cardMap[k] = append(cardMap[k], c)
+	}
+	var quads [][]Card
+	for k, c := range count {
+		if c >= 4 {
+			numQuads := c / 4
+			for i := 0; i < numQuads; i++ {
+				q := make([]Card, 4)
+				copy(q, cardMap[k][i*4:(i+1)*4])
+				quads = append(quads, q)
+			}
+		}
+	}
+	return quads
+}
+
 // findPairsInCards finds all pairs in a set of cards
 func findPairsInCards(cards []Card, trumpSuit Suit, level Rank) [][]Card {
 	// Group by actual suit and rank — only same rank AND same actual suit form a pair

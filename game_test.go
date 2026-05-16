@@ -625,11 +625,13 @@ func TestMultiGroupThrowStillResolved(t *testing.T) {
 	}
 
 	result := ResolveThrow(cards, allHands, trumpSuit, level)
+	// AA pair should be safe, QQ should be removed (KK beats QQ)
+	// So result should be 2 cards (the AA pair)
 	if len(result) == 4 {
-		t.Error("Multi-group throw with non-max components should be resolved to single card")
+		t.Error("Multi-group throw with non-max components should be resolved to safe components only")
 	}
-	if len(result) != 1 {
-		t.Errorf("Expected 1 card after resolution, got %d", len(result))
+	if len(result) != 2 {
+		t.Errorf("Expected 2 cards (safe AA pair) after resolution, got %d", len(result))
 	}
 }
 
@@ -1022,7 +1024,7 @@ func TestValidateFollowingPairNotForceMax(t *testing.T) {
 // --- 4-Deck Multi-Pair Tests ---
 
 func TestMultiPairDetectionSameRankSuit(t *testing.T) {
-	// 4 copies of the same card (same rank + same suit) should be detected as 2 pairs
+	// 4 copies of the same card (same rank + same suit) should be detected as 1 quad group
 	level := Rank10
 	trumpSuit := SuitHeart
 
@@ -1035,9 +1037,13 @@ func TestMultiPairDetectionSameRankSuit(t *testing.T) {
 
 	groups := AnalyzePlay(cards, trumpSuit, level)
 
+	quadCount := 0
 	pairCount := 0
 	singleCount := 0
 	for _, g := range groups {
+		if g.IsQuad {
+			quadCount++
+		}
 		if g.IsPair {
 			pairCount++
 		}
@@ -1045,8 +1051,11 @@ func TestMultiPairDetectionSameRankSuit(t *testing.T) {
 			singleCount++
 		}
 	}
-	if pairCount != 2 {
-		t.Errorf("Expected 2 pair groups from 4 copies of same card, got %d", pairCount)
+	if quadCount != 1 {
+		t.Errorf("Expected 1 quad group from 4 copies of same card, got %d", quadCount)
+	}
+	if pairCount != 0 {
+		t.Errorf("Expected 0 pair groups from 4 copies of same card (quad should dominate), got %d", pairCount)
 	}
 	if singleCount != 0 {
 		t.Errorf("Expected 0 singles from 4 copies of same card, got %d", singleCount)
@@ -1085,10 +1094,10 @@ func TestMultiPairLeadValid(t *testing.T) {
 		t.Error("Leading with 2 pairs (4 same cards) should be valid")
 	}
 
-	// playType should detect 2 pairs
+	// playType should detect 4 same-rank cards as quad (四张同点)
 	pt := playType(cards, trumpSuit, level)
-	if pt != 2 {
-		t.Errorf("playType(4 copies) = %d, expected 2 (pair level, 2 pairs)", pt)
+	if pt != 4 {
+		t.Errorf("playType(4 copies) = %d, expected 4 (quad, 四张同点)", pt)
 	}
 }
 

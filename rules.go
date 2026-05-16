@@ -122,6 +122,8 @@ type CardGroup struct {
 	Cards     []Card
 	IsTractor bool
 	IsPair    bool
+	IsTriple  bool
+	IsQuad    bool
 	IsSingle  bool
 	Suit      Suit // effective suit
 }
@@ -154,13 +156,14 @@ func AnalyzePlay(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 
 // analyzeSameSuit analyzes cards of the same effective suit into groups
 // Supports 4-deck: with 4 copies of the same card (count >= 4), produces
-// multiple pair groups (count/2 pairs per {suit,rank}).
+// groups of triples, quads, pairs, or singles depending on card counts.
+// Priority: quad > triple > pair > single, with tractors detected at each level.
 func analyzeSameSuit(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 	if len(cards) == 0 {
 		return nil
 	}
 
-	// Count cards by (rank, actual suit) - only same rank AND same actual suit form a pair
+	// Count cards by (rank, actual suit)
 	type rsKey struct {
 		rank Rank
 		suit Suit
@@ -171,42 +174,64 @@ func analyzeSameSuit(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 		rsCount[k]++
 	}
 
-	// Build pair info: for each (rank,suit) with count>=2, track how many pairs (count/2)
-	type pairSlot struct {
+	// Build slot info for each (rank,suit) with counts
+	type slot struct {
 		rank  Rank
 		suit  Suit
-		pairs int // count/2 = number of pairs from this {rank,suit}
+		cnt   int // total cards in this {rank,suit}
 	}
-	var pairSlots []pairSlot
+	var slots []slot
 	for k, cnt := range rsCount {
-		if cnt >= 2 {
-			pairSlots = append(pairSlots, pairSlot{k.rank, k.suit, cnt / 2})
+		if cnt >= 1 {
+			slots = append(slots, slot{k.rank, k.suit, cnt})
 		}
 	}
 
-	// Build pair ranks map for tractor detection (1 entry per unique rank)
-	pairs := make(map[Rank]bool)
-	for _, ps := range pairSlots {
-		pairs[ps.rank] = true
+	// Helper to get unit counts per {rank, suit}
+	type baseGroupType int
+	const (
+		unitSingle baseGroupType = iota
+		unitPair
+		unitTriple
+		unitQuad
+	)
+	getUnitCount := func(unit baseGroupType, rank Rank, suit Suit) int {
+		for _, s := range slots {
+			if s.rank == rank && s.suit == suit {
+				switch unit {
+				case unitQuad: return s.cnt / 4
+				case unitTriple: return s.cnt / 3
+				case unitPair: return s.cnt / 2
+				case unitSingle: return s.cnt
+				}
+			}
+		}
+		return 0
 	}
 
-	// Find tractors (consecutive pairs)
-	var pairRanks []Rank
-	for r := range pairs {
-		pairRanks = append(pairRanks, r)
+	// Collect ranks with each unit type
+	collectRanks := func(unit baseGroupType) []Rank {
+		seen := make(map[Rank]bool)
+		var ranks []Rank
+		for _, s := range slots {
+			if seen[s.rank] { continue }
+			switch unit {
+			case unitQuad:
+				if s.cnt >= 4 { seen[s.rank] = true; ranks = append(ranks, s.rank) }
+			case unitTriple:
+				if s.cnt >= 3 { seen[s.rank] = true; ranks = append(ranks, s.rank) }
+			case unitPair:
+				if s.cnt >= 2 { seen[s.rank] = true; ranks = append(ranks, s.rank) }
+			case unitSingle:
+				if s.cnt >= 1 { seen[s.rank] = true; ranks = append(ranks, s.rank) }
+			}
+		}
+		return ranks
 	}
-	// Sort pair ranks
-	sortRanks(pairRanks, trumpSuit, level)
-
-	// Find tractors (consecutive pairs)
-	tractors := findTractors(pairRanks, trumpSuit, level)
 
 	var result []CardGroup
-
-	// Track already-consumed cards to avoid returning the same card in multiple groups
 	consumedCards := make(map[Card]bool)
 
-	// Helper: return up to `count` unconsumed cards of the given rank
 	consumeRankCards := func(rank Rank, count int) []Card {
 		var out []Card
 		for _, c := range cards {
@@ -218,44 +243,134 @@ func analyzeSameSuit(cards []Card, trumpSuit Suit, level Rank) []CardGroup {
 		return out
 	}
 
-	// Add tractors
-	for _, tRanks := range tractors {
-		var tc []Card
-		for _, r := range tRanks {
-			tc = append(tc, consumeRankCards(r, 2)...) // 1 pair = 2 cards
+	// Detect quad-tractors (consecutive quads)
+	quadRanks := collectRanks(unitQuad)
+	if len(quadRanks) >= 2 {
+		sortRanks(quadRanks, trumpSuit, level)
+		quadTractors := findTractors(quadRanks, trumpSuit, level)
+		for _, tRanks := range quadTractors {
+			var tc []Card
+			for _, r := range tRanks {
+				// Consume 4 cards per quad
+				for _, s := range slots {
+					if s.rank == r && getUnitCount(unitQuad, r, s.suit) >= 1 {
+						tc = append(tc, consumeRankCards(r, 4)...)
+						break
+					}
+				}
+			}
+			if len(tc) >= 8 {
+				result = append(result, CardGroup{Cards: tc, IsTractor: true, IsQuad: true})
+			}
 		}
-		result = append(result, CardGroup{
-			Cards:     tc,
-			IsTractor: true,
-		})
 	}
 
-	// Add remaining pairs (not in tractors) — emit separate CardGroup for each available pair
-	for _, ps := range pairSlots {
-		for i := 0; i < ps.pairs; i++ {
-			cardsOut := consumeRankCards(ps.rank, 2)
-			if len(cardsOut) >= 2 {
-				result = append(result, CardGroup{
-					Cards:  cardsOut,
-					IsPair: true,
-				})
+	// Detect triple-tractors (consecutive triples)
+	tripleRanks := collectRanks(unitTriple)
+	if len(tripleRanks) >= 2 {
+		sortRanks(tripleRanks, trumpSuit, level)
+		tripleTractors := findTractors(tripleRanks, trumpSuit, level)
+		for _, tRanks := range tripleTractors {
+			var tc []Card
+			for _, r := range tRanks {
+				// Consume 3 cards per triple
+				for _, s := range slots {
+					if s.rank == r && getUnitCount(unitTriple, r, s.suit) >= 1 {
+						tc = append(tc, consumeRankCards(r, 3)...)
+						break
+					}
+				}
+			}
+			if len(tc) >= 6 {
+				result = append(result, CardGroup{Cards: tc, IsTractor: true, IsTriple: true})
+			}
+		}
+	}
+
+	// Detect pair-tractors (consecutive pairs)
+	pairRanks := collectRanks(unitPair)
+	if len(pairRanks) >= 2 {
+		sortRanks(pairRanks, trumpSuit, level)
+		pairTractors := findTractors(pairRanks, trumpSuit, level)
+		for _, tRanks := range pairTractors {
+			var tc []Card
+			for _, r := range tRanks {
+				// Consume 2 cards per pair
+				for _, s := range slots {
+					if s.rank == r && getUnitCount(unitPair, r, s.suit) >= 1 {
+						tc = append(tc, consumeRankCards(r, 2)...)
+						break
+					}
+				}
+			}
+			if len(tc) >= 4 {
+				result = append(result, CardGroup{Cards: tc, IsTractor: true})
+			}
+		}
+	}
+
+	// Add remaining quad groups (not consumed by tractors)
+	for _, s := range slots {
+		numQuads := getUnitCount(unitQuad, s.rank, s.suit)
+		for i := 0; i < numQuads; i++ {
+			// Check how many unconsumed cards exist first
+			unconsumed := 0
+			for _, c := range cards {
+				if c.Rank == s.rank && !consumedCards[c] && c.Suit == s.suit {
+					unconsumed++
+				}
+			}
+			if unconsumed >= 4 {
+				cardsOut := consumeRankCards(s.rank, 4)
+				if len(cardsOut) >= 4 {
+					result = append(result, CardGroup{Cards: cardsOut, IsQuad: true})
+				}
+			}
+		}
+	}
+
+	// Add remaining triple groups (not consumed by tractors)
+	for _, s := range slots {
+		numTriples := getUnitCount(unitTriple, s.rank, s.suit)
+		for i := 0; i < numTriples; i++ {
+			unconsumed := 0
+			for _, c := range cards {
+				if c.Rank == s.rank && !consumedCards[c] && c.Suit == s.suit {
+					unconsumed++
+				}
+			}
+			if unconsumed >= 3 {
+				cardsOut := consumeRankCards(s.rank, 3)
+				if len(cardsOut) >= 3 {
+					result = append(result, CardGroup{Cards: cardsOut, IsTriple: true})
+				}
+			}
+		}
+	}
+
+	// Add remaining pairs (not consumed by tractors/triples/quads)
+	for _, s := range slots {
+		numPairs := getUnitCount(unitPair, s.rank, s.suit)
+		for i := 0; i < numPairs; i++ {
+			unconsumed := 0
+			for _, c := range cards {
+				if c.Rank == s.rank && !consumedCards[c] && c.Suit == s.suit {
+					unconsumed++
+				}
+			}
+			if unconsumed >= 2 {
+				cardsOut := consumeRankCards(s.rank, 2)
+				if len(cardsOut) >= 2 {
+					result = append(result, CardGroup{Cards: cardsOut, IsPair: true})
+				}
 			}
 		}
 	}
 
 	// Add singles
-	usedCards := make(map[Card]bool)
-	for _, g := range result {
-		for _, c := range g.Cards {
-			usedCards[c] = true
-		}
-	}
 	for _, c := range cards {
-		if !usedCards[c] {
-			result = append(result, CardGroup{
-				Cards:    []Card{c},
-				IsSingle: true,
-			})
+		if !consumedCards[c] {
+			result = append(result, CardGroup{Cards: []Card{c}, IsSingle: true})
 		}
 	}
 
@@ -687,13 +802,20 @@ func isAllTrump(cards []Card, trumpSuit Suit, level Rank) bool {
 }
 
 // playType returns the type strength of a play:
-// 3 = tractor (拖拉机), 2 = pair (对), 1 = singles (散牌)
-// For 4-deck: each {suit,rank} with count>=2 contributes count/2 pairs.
+// 1 = singles (散牌)
+// 2 = pair (对子)
+// 3 = triple (三张同点)
+// 4 = quad (四张同点)
+// 5 = pair-tractor (对子拖拉机, consecutive pairs)
+// 6 = triple-tractor (三张拖拉机, consecutive triples)
+// 7 = quad-tractor (四张拖拉机, consecutive quads)
+// For 4-deck: each {suit,rank} with count>=n contributes base units of size n.
 func playType(cards []Card, trumpSuit Suit, level Rank) int {
 	if len(cards) < 2 {
 		return 1
 	}
-	// Count cards by (rank, actual suit) — only same rank AND same actual suit form a pair
+
+	// Count cards by (rank, actual suit)
 	type rsKey struct {
 		rank Rank
 		suit Suit
@@ -704,46 +826,85 @@ func playType(cards []Card, trumpSuit Suit, level Rank) int {
 		rsCount[k]++
 	}
 
-	// Count pairs (4-deck: each {suit,rank} with count>=2 contributes count/2 pairs)
-	numPairs := 0
-	for _, count := range rsCount {
-		if count >= 2 {
-			numPairs += count / 2
+	// Determine max consecutive rank sets by triple, quadruple threshold
+	// Collect ranks with count>=2, >=3, >=4
+	ranksWithPair := make(map[Rank]bool)
+	ranksWithTriple := make(map[Rank]bool)
+	ranksWithQuad := make(map[Rank]bool)
+	for k, cnt := range rsCount {
+		if cnt >= 2 {
+			ranksWithPair[k.rank] = true
+		}
+		if cnt >= 3 {
+			ranksWithTriple[k.rank] = true
+		}
+		if cnt >= 4 {
+			ranksWithQuad[k.rank] = true
 		}
 	}
-
-	if numPairs >= 2 {
-		// Check if pairs form a tractor (consecutive)
-		var pairRanks []Rank
-		pairSeen := make(map[Rank]bool)
-		for k, count := range rsCount {
-			if count >= 2 && !pairSeen[k.rank] {
-				pairRanks = append(pairRanks, k.rank)
-				pairSeen[k.rank] = true
+	
+	// Helper: check if a set of ranks forms consecutive sequence
+	hasConsecutive := func(ranks map[Rank]bool, minLength int) bool {
+		var rlist []Rank
+		for r := range ranks {
+			if r != level { // level rank cards don't form normal sequences
+				rlist = append(rlist, r)
 			}
 		}
-		// Check for at least one consecutive pair
-		for i := 0; i < len(pairRanks)-1; i++ {
-			for j := i + 1; j < len(pairRanks); j++ {
-				if areConsecutiveRanks(pairRanks[i], pairRanks[j], trumpSuit, level) {
-					return 3 // tractor
+		sortRanks(rlist, trumpSuit, level)
+		streak := 1
+		for i := 1; i < len(rlist); i++ {
+			if areConsecutiveRanks(rlist[i-1], rlist[i], trumpSuit, level) {
+				streak++
+				if streak >= minLength {
+					return true
 				}
+			} else {
+				streak = 1
 			}
 		}
-		// Multi-pair: if the same rank has >= 4 cards (2+ pairs) and a consecutive rank
-		// also has >= 4 cards, that's a tractor, but playType=3 already covers this
-		// since numPairs >= 2 is satisfied.
+		return false
 	}
 
-	if numPairs >= 1 && len(cards) == 2 {
+	// Check quad-tractor (consecutive quads) - highest
+	if hasConsecutive(ranksWithQuad, 2) && len(cards) >= 8 {
+		return 7
+	}
+
+	// Check triple-tractor (consecutive triples)
+	if hasConsecutive(ranksWithTriple, 2) && len(cards) >= 6 {
+		return 6
+	}
+
+	// Check pair-tractor (consecutive pairs)
+	if hasConsecutive(ranksWithPair, 2) && len(cards) >= 4 {
+		return 5
+	}
+
+	// Count how many cards of the most common rank (by actual suit)
+	maxSameRank := 0
+	for _, cnt := range rsCount {
+		if cnt > maxSameRank {
+			maxSameRank = cnt
+		}
+	}
+
+	// Single rank groups
+	if maxSameRank >= 4 && len(cards)%4 == 0 && len(cards) <= 4 {
+		return 4 // quad (四张)
+	}
+	if maxSameRank >= 3 && len(cards)%3 == 0 && len(cards) <= 3 {
+		return 3 // triple (三张)
+	}
+	if maxSameRank >= 2 && len(cards) == 2 {
 		return 2 // pair
 	}
-	if numPairs >= 1 {
-		// Multi-pair but not consecutive = treat as pair level
-		return 2
-	}
 
-	return 1 // singles
+	// Remaining cases: singles or mixed groups
+	if maxSameRank >= 2 {
+		return 2 // at least pairs
+	}
+	return 1
 }
 
 // bestCardInPlay returns the strongest card in a play
@@ -773,25 +934,40 @@ func CalculateTrickPoints(plays [][]Card) int {
 }
 
 // CalculateBottomMultiplier calculates the bottom card score multiplier
-// based on the last trick's winning play structure
-// Multiplier = 2^(number of cards in the largest group type)
+// Based on the last trick's winning play structure.
+// Rule: 最后一墩出几对赢就翻几倍 (2x per pair).
+// For 4-deck: each pair or triple or quadruple counts as one multiplier unit.
+// Multiplier = 2^(number of matched groups: pairs/triples/quads in winning play).
 func CalculateBottomMultiplier(winningPlay []Card, trumpSuit Suit, level Rank) int {
 	if len(winningPlay) == 0 {
-		return 2 // single card = 2x
+		return 2 // default 2x
 	}
 
 	groups := AnalyzePlay(winningPlay, trumpSuit, level)
-	maxGroupSize := 1
+	numGroups := len(groups)
+	if numGroups == 0 {
+		return 2
+	}
+	// If a single card is played, multiplier = 2
+	if numGroups == 1 && groups[0].IsSingle {
+		return 2
+	}
+
+	// Count all non-single groups: pairs, triples, quads, tractors each count as 1 unit.
+	totalUnits := 0
 	for _, g := range groups {
-		if len(g.Cards) > maxGroupSize {
-			maxGroupSize = len(g.Cards)
+		if !g.IsSingle {
+			totalUnits++
 		}
 	}
 
-	// Multiplier = 2^maxGroupSize
+	// Multiplier = 2 ^ totalUnits
 	result := 1
-	for i := 0; i < maxGroupSize; i++ {
+	for i := 0; i < totalUnits; i++ {
 		result *= 2
+	}
+	if result < 2 {
+		return 2
 	}
 	return result
 }
@@ -844,6 +1020,10 @@ func isMaxGroup(g CardGroup, allHands [][]Card, trumpSuit Suit, level Rank) bool
 		return isMaxPairCards(g.Cards, otherCards, trumpSuit, level)
 	case g.IsTractor:
 		return isMaxTractorCards(g.Cards, otherCards, trumpSuit, level)
+	case g.IsTriple:
+		return isMaxTripleCards(g.Cards, otherCards, trumpSuit, level)
+	case g.IsQuad:
+		return isMaxQuadCards(g.Cards, otherCards, trumpSuit, level)
 	}
 	return true
 }
@@ -891,6 +1071,54 @@ func isMaxPairCards(pairCards []Card, otherCards []Card, trumpSuit Suit, level R
 	return true
 }
 
+// isMaxTripleCards checks if a triple (3 same rank) is the highest triple of its effective suit
+func isMaxTripleCards(tripleCards []Card, otherCards []Card, trumpSuit Suit, level Rank) bool {
+	ourOrder := cardRankOrder(tripleCards[0], trumpSuit, level)
+	for _, c := range tripleCards[1:] {
+		if o := cardRankOrder(c, trumpSuit, level); o > ourOrder {
+			ourOrder = o
+		}
+	}
+
+	otherTriples := findTriplesInCards(otherCards, trumpSuit, level)
+	for _, t := range otherTriples {
+		tOrder := cardRankOrder(t[0], trumpSuit, level)
+		for _, c := range t[1:] {
+			if o := cardRankOrder(c, trumpSuit, level); o > tOrder {
+				tOrder = o
+			}
+		}
+		if tOrder > ourOrder {
+			return false
+		}
+	}
+	return true
+}
+
+// isMaxQuadCards checks if a quad (4 same rank+suit) is the highest quad of its effective suit
+func isMaxQuadCards(quadCards []Card, otherCards []Card, trumpSuit Suit, level Rank) bool {
+	ourOrder := cardRankOrder(quadCards[0], trumpSuit, level)
+	for _, c := range quadCards[1:] {
+		if o := cardRankOrder(c, trumpSuit, level); o > ourOrder {
+			ourOrder = o
+		}
+	}
+
+	otherQuads := findQuadsInCards(otherCards, trumpSuit, level)
+	for _, q := range otherQuads {
+		qOrder := cardRankOrder(q[0], trumpSuit, level)
+		for _, c := range q[1:] {
+			if o := cardRankOrder(c, trumpSuit, level); o > qOrder {
+				qOrder = o
+			}
+		}
+		if qOrder > ourOrder {
+			return false
+		}
+	}
+	return true
+}
+
 // isMaxTractorCards checks if a tractor is the highest tractor of its effective suit
 func isMaxTractorCards(tractorCards []Card, otherCards []Card, trumpSuit Suit, level Rank) bool {
 	ourHighest := cardRankOrder(tractorCards[0], trumpSuit, level)
@@ -924,9 +1152,8 @@ func min(a, b int) int {
 
 // ResolveThrow checks if a leading multi-card play is a valid throw (all groups are max).
 // If all groups are unbeatable, returns the cards as-is.
-// Otherwise, returns only the smallest single card.
-// ResolveThrow checks if a leading multi-card play is a valid throw (all groups are max).
-// Single groups (single pair, single tractor) are always played as-is — no resolution needed.
+// Otherwise, retains only the safe (unbeatable) components and removes the rest.
+// Single groups (single pair, single tractor) are always played as-is.
 // Only 甩牌 with multiple groups is checked and potentially reduced.
 func ResolveThrow(cards []Card, allHands [][]Card, trumpSuit Suit, level Rank) []Card {
 	if len(cards) <= 1 || len(allHands) == 0 {
@@ -940,26 +1167,26 @@ func ResolveThrow(cards []Card, allHands [][]Card, trumpSuit Suit, level Rank) [
 		return cards
 	}
 
-	allMax := true
+	// Keep only the groups that are safe (unbeatable)
+	var safeCards []Card
 	for _, g := range groups {
-		if !isMaxGroup(g, allHands, trumpSuit, level) {
-			allMax = false
-			break
+		if isMaxGroup(g, allHands, trumpSuit, level) {
+			safeCards = append(safeCards, g.Cards...)
 		}
 	}
 
-	if allMax {
-		return cards // full throw is valid
+	// If no safe groups, fall back to the smallest single card
+	if len(safeCards) == 0 {
+		smallest := cards[0]
+		smallestOrder := cardRankOrder(smallest, trumpSuit, level)
+		for _, c := range cards[1:] {
+			if o := cardRankOrder(c, trumpSuit, level); o < smallestOrder {
+				smallest = c
+				smallestOrder = o
+			}
+		}
+		return []Card{smallest}
 	}
 
-	// Not all max: play only the smallest single card
-	smallest := cards[0]
-	smallestOrder := cardRankOrder(smallest, trumpSuit, level)
-	for _, c := range cards[1:] {
-		if o := cardRankOrder(c, trumpSuit, level); o < smallestOrder {
-			smallest = c
-			smallestOrder = o
-		}
-	}
-	return []Card{smallest}
+	return safeCards
 }

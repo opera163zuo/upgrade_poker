@@ -227,7 +227,7 @@ func (g *Game) RunBiddingPhase() bool {
 						hasBid = true
 						consecutivePasses = 0
 						// Locking bids end immediately
-						if b.Type == BidPairLevel || b.Type == BidTripleLevel || b.Type == BidPairJoker {
+						if b.Type == BidPairLevel || b.Type == BidTripleLevel || b.Type == BidQuadLevel || b.Type == BidPairJoker {
 							locked = true
 						}
 						waitingBid = false
@@ -244,7 +244,7 @@ func (g *Game) RunBiddingPhase() bool {
 				g.applyBid(bid)
 				hasBid = true
 				consecutivePasses = 0
-				if bid.Type == BidPairLevel || bid.Type == BidTripleLevel || bid.Type == BidPairJoker {
+				if bid.Type == BidPairLevel || bid.Type == BidTripleLevel || bid.Type == BidQuadLevel || bid.Type == BidPairJoker {
 					locked = true
 				}
 			} else {
@@ -276,7 +276,15 @@ func (g *Game) RunBiddingPhase() bool {
 		}
 		// On subsequent hands, g.Dealer stays as set by HandleUpgrade
 	} else {
-		g.TrumpSuit = SuitJoker
+		// No one bid: flip first bottom card to determine trump suit
+		if len(g.BottomCards) > 0 {
+			g.TrumpSuit = g.BottomCards[0].Suit
+			if g.BottomCards[0].IsJoker() {
+				g.TrumpSuit = SuitJoker // Joker means no trump
+			}
+		} else {
+			g.TrumpSuit = SuitJoker
+		}
 	}
 
 	for _, p := range g.Players {
@@ -288,6 +296,11 @@ func (g *Game) RunBiddingPhase() bool {
 func (g *Game) aiBidSimple(player *Player, validBids []Bid) *Bid {
 	for _, bid := range validBids {
 		if bid.Type == BidPairJoker {
+			return &bid
+		}
+	}
+	for _, bid := range validBids {
+		if bid.Type == BidQuadLevel {
 			return &bid
 		}
 	}
@@ -645,14 +658,22 @@ func (g *Game) Run() {
 			}
 
 			if g.CurrentBid == nil {
-				g.showMessage("无人亮主，重新发牌", nil)
-				_, _, restartedWait := g.waitActionOrTimeout(1500 * time.Millisecond)
-				if restartedWait {
+				// No one bid: flip first bottom card to determine trump (already done in RunBiddingPhase)
+				flipSuit := g.TrumpSuit
+				flipMsg := "无人亮主，翻底牌"
+				if flipSuit == SuitJoker {
+					flipMsg += "：无主（翻到王）"
+				} else {
+					flipMsg += "：" + flipSuit.String() + "作主"
+				}
+				g.setPhase(baseui.PhaseBidding)
+				g.showMessage(flipMsg, []baseui.ButtonSpec{{ID: string(baseui.ActionConfirm), Label: "[Enter:继续]", Enabled: true}})
+				if _, restartedWait := g.waitAction(); restartedWait {
 					restarted = true
 					break
 				}
 				g.showMessage("", nil)
-				continue
+				// Continue to discard phase, do NOT re-deal
 			}
 
 			g.setPhase(baseui.PhaseDiscard)
