@@ -296,7 +296,7 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 	}
 
 	var slots []southSlot
-	slots = g.southSlots(pv.HandCards, selected, biddingRaise, view.TrumpSuit)
+	slots = g.southSlotsAdaptive(pv.HandCards, selected, biddingRaise, view.TrumpSuit)
 	g.drawSouthGroupBackdrops(screen, pv.HandCards, slots, view.TrumpSuit)
 	for _, slot := range slots {
 		c := pv.HandCards[slot.idx]

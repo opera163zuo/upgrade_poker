@@ -109,7 +109,6 @@ A > K > Q > J > 9 > 8 > 7 > 6 > 5 > 4 > 3
 
 - 每轮功能修改后，都会同步重新生成：
   - Windows 可执行文件
-  - Linux 可执行文件
   - Windows 压缩包
 - 当前 `release/` 目录中的产物与仓库代码保持同步
 
@@ -138,6 +137,18 @@ make build
 
 ```bash
 go build -o upgrade .
+```
+
+如需生成 `release/` 目录下的 Windows 发布产物（`.exe` + `.zip`），可执行：
+
+```bash
+make release
+```
+
+或直接运行：
+
+```bash
+build.bat
 ```
 
 ### 运行

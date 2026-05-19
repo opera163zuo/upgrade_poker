@@ -1,6 +1,7 @@
 # 部署同步说明
 
 > 项目：upgrade_poker · 编译产物发布指南
+> 说明：自 2026-05-19 起，仅维护 Windows 发布产物（`.exe` + `.zip`）
 > 对应提交：`046b0c0`
 
 ---
@@ -11,14 +12,12 @@
 |------|------|------|
 | `release/upgrade_046b0c0_win64.exe` | ~7.6 MB | Windows 可执行文件 |
 | `release/upgrade_046b0c0_win64.zip` | ~2.9 MB | Windows zip 打包 |
-| `release/upgrade_046b0c0_linux64` | ~8.0 MB | Linux 可执行文件 (AMD64) |
 
 ## 2. 运行环境要求
 
 | 平台 | 最低版本 |
 |------|----------|
 | **Windows** | Windows 10+ (64-bit) |
-| **Linux** | Linux kernel 4.15+ (AMD64) |
 
 ## 3. 部署方式
 
@@ -31,12 +30,6 @@ copy release\upgrade_046b0c0_win64.exe D:\target\upgrade.exe
 
 rem 方案 B：解压 zip 使用
 解压 release\upgrade_046b0c0_win64.zip 到 D:\target\
-```
-
-### Linux
-```bash
-cp release/upgrade_046b0c0_linux64 /opt/upgrade/upgrade
-chmod +x /opt/upgrade/upgrade
 ```
 
 ## 4. 运行检查清单
@@ -62,8 +55,9 @@ ls -la release/
 ### 方式 C：自编译
 ```bash
 # 安装依赖后
-go build -o upgrade_linux64 .
-GOOS=windows GOARCH=amd64 go build -o upgrade_win64.exe .
+go build -o upgrade.exe .
+copy /Y upgrade.exe release\upgrade_win64.exe
+powershell -NoProfile -Command "Compress-Archive -LiteralPath 'release\upgrade_win64.exe' -DestinationPath 'release\upgrade_win64.zip' -Force"
 ```
 
 ---
