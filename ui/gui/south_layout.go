@@ -25,8 +25,9 @@ func (g *GUI) southSlotsAdaptive(cards []baseui.CardView, selected map[int]bool,
 	}
 
 	physCardW, physCardH := g.sc.CardPhysSize()
-	tableX := g.sc.PX(RefTableX)
-	tableW := g.sc.PXAbsolute(RefTableW)
+	tableRect := g.tableInnerBounds()
+	tableX := tableRect.X
+	tableW := tableRect.W
 	withinCount, betweenCount := southHandGapCounts(cards, ordered)
 	withinSuitGap, betweenSuitGap := g.fitSouthHandGaps(withinCount, betweenCount, physCardW, tableW)
 	totalWidth := southHandTotalWidth(physCardW, withinCount, betweenCount, withinSuitGap, betweenSuitGap)
@@ -41,7 +42,7 @@ func (g *GUI) southSlotsAdaptive(cards []baseui.CardView, selected map[int]bool,
 		startX = maxStartX
 	}
 
-	y := g.sc.PX(RefSouthHandY)
+	y := g.southHandY()
 	var slots []southSlot
 	for pos, idx := range ordered {
 		var slotX int

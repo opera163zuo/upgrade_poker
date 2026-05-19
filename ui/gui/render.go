@@ -222,69 +222,176 @@ func (g *GUI) statusLine(view baseui.TableView, selected map[int]bool) string {
 
 func (g *GUI) drawNorth(screen *ebiten.Image, view baseui.TableView) {
 	pv := view.Players[2]
-	labelX, labelY := g.sc.PX(272), g.sc.PX(68)
+	table := g.tableOuterBounds()
+	panelW := g.sc.PXAbsolute(118)
+	labelX := table.X + table.W/2 - panelW/2
+	labelY := table.Y + g.sc.PXAbsolute(12)
 	g.drawSeatLabelPhys(screen, pv, labelX, labelY)
-	for i := 0; i < pv.HandCount && i < 12; i++ {
-		x := g.sc.PX(440) - g.sc.PXAbsolute(RefNorthHandGap)*i
-		g.drawCardPhys(screen, x, g.sc.PX(RefNorthHandY),
+
+	cardW, _ := g.sc.CardPhysSize()
+	visible := minInt(pv.HandCount, 12)
+	gap := g.sc.PXAbsolute(RefNorthHandGap)
+	totalW := cardW
+	if visible > 1 {
+		totalW += (visible - 1) * gap
+	}
+	startX := table.X + table.W/2 - totalW/2
+	cardY := labelY + g.sc.PXAbsolute(34)
+	for i := 0; i < visible; i++ {
+		g.drawCardPhys(screen, startX+i*gap, cardY,
 			baseui.CardView{Label: "", FaceUp: false}, false, 1)
 	}
 }
 
 func (g *GUI) drawWest(screen *ebiten.Image, view baseui.TableView) {
 	pv := view.Players[1]
-	g.drawSeatLabelPhys(screen, pv, g.sc.PX(10), g.sc.PX(138))
-	for i := 0; i < pv.HandCount && i < 10; i++ {
-		y := g.sc.PX(RefWestHandY) + g.sc.PXAbsolute(RefWestHandGap)*i
-		g.drawCardPhys(screen, g.sc.PX(RefWestHandX), y,
+	table := g.tableOuterBounds()
+	panelX := table.X + g.sc.PXAbsolute(18)
+	panelY := table.Y + table.H/2 - g.sc.PXAbsolute(68)
+	g.drawSeatLabelPhys(screen, pv, panelX, panelY)
+
+	_, cardH := g.sc.CardPhysSize()
+	visible := minInt(pv.HandCount, 10)
+	gap := g.sc.PXAbsolute(RefWestHandGap)
+	totalH := cardH
+	if visible > 1 {
+		totalH += (visible - 1) * gap
+	}
+	startY := table.Y + table.H/2 - totalH/2 + g.sc.PXAbsolute(12)
+	cardX := table.X + g.sc.PXAbsolute(30)
+	for i := 0; i < visible; i++ {
+		g.drawCardPhys(screen, cardX, startY+i*gap,
 			baseui.CardView{FaceUp: false}, false, 1)
 	}
 }
 
 func (g *GUI) drawEast(screen *ebiten.Image, view baseui.TableView) {
 	pv := view.Players[3]
-	g.drawSeatLabelPhys(screen, pv, g.sc.PX(520), g.sc.PX(138))
-	for i := 0; i < pv.HandCount && i < 10; i++ {
-		y := g.sc.PX(RefEastHandY) - g.sc.PXAbsolute(RefEastHandGap)*i
-		g.drawCardPhys(screen, g.sc.PX(RefEastHandX), y,
+	table := g.tableOuterBounds()
+	panelW := g.sc.PXAbsolute(118)
+	panelX := table.X + table.W - panelW - g.sc.PXAbsolute(18)
+	panelY := table.Y + table.H/2 - g.sc.PXAbsolute(68)
+	g.drawSeatLabelPhys(screen, pv, panelX, panelY)
+
+	cardW, cardH := g.sc.CardPhysSize()
+	visible := minInt(pv.HandCount, 10)
+	gap := g.sc.PXAbsolute(RefEastHandGap)
+	totalH := cardH
+	if visible > 1 {
+		totalH += (visible - 1) * gap
+	}
+	startY := table.Y + table.H/2 - totalH/2 + g.sc.PXAbsolute(12)
+	cardX := table.X + table.W - cardW - g.sc.PXAbsolute(30)
+	for i := 0; i < visible; i++ {
+		g.drawCardPhys(screen, cardX, startY+i*gap,
 			baseui.CardView{FaceUp: false}, false, 1)
 	}
 }
 
 func (g *GUI) drawSeatLabelPhys(screen *ebiten.Image, pv baseui.PlayerView, x, y int) {
-	_ = screen
-	_ = pv
-	_ = x
-	_ = y
+	panelW := g.sc.PXAbsolute(118)
+	panelH := g.sc.PXAbsolute(42)
+	border := tintWithAlpha(panelBorderColor, 0x92)
+	var titleColor color.Color = color.White
+	if pv.IsHuman {
+		border = seatHumanColor
+		titleColor = seatHumanColor
+	}
+	if pv.IsThinking {
+		border = seatThinkingColor
+	}
+	drawRoundedPanel(screen, Rect{X: x, Y: y, W: panelW, H: panelH},
+		g.sc.PXAbsolute(12), 1, seatFillColor, border)
+
+	title := pv.Position
+	if title == "" {
+		title = pv.Name
+	}
+	countText := fmt.Sprintf("%d张", pv.HandCount)
+	countW := g.textWidth(countText) + g.sc.PXAbsolute(16)
+	countRect := Rect{
+		X: x + panelW - countW - g.sc.PXAbsolute(8),
+		Y: y + g.sc.PXAbsolute(7),
+		W: countW,
+		H: g.sc.PXAbsolute(15),
+	}
+	drawRoundedPanel(screen, countRect, g.sc.PXAbsolute(7), 1, seatBadgeColor, tintWithAlpha(border, 0xa0))
+	g.physText(screen, countText,
+		countRect.X+g.sc.PXAbsolute(8),
+		countRect.Y+g.sc.PXAbsolute(11),
+		color.White)
+
+	g.physText(screen, title,
+		x+g.sc.PXAbsolute(10),
+		y+g.sc.PXAbsolute(16),
+		titleColor)
+
+	tagX := x + g.sc.PXAbsolute(10)
+	tagY := y + g.sc.PXAbsolute(24)
+	if pv.IsHuman {
+		tagX = g.drawSeatTag(screen, "主视角", tagX, tagY, tintWithAlpha(seatHumanColor, 0x36), seatHumanColor)
+	}
+	if pv.IsDealer {
+		tagX = g.drawSeatTag(screen, "庄家", tagX, tagY, tintWithAlpha(seatDealerColor, 0x36), seatDealerColor)
+	}
+	if pv.IsBidder {
+		tagX = g.drawSeatTag(screen, "叫主", tagX, tagY, tintWithAlpha(seatBidderColor, 0x36), seatBidderColor)
+	}
+	if pv.IsThinking {
+		g.drawSeatTag(screen, "思考中", tagX, tagY, tintWithAlpha(seatThinkingColor, 0x36), seatThinkingColor)
+	}
 }
 
 func (g *GUI) drawCenter(screen *ebiten.Image, view baseui.TableView) {
-	positions := []struct {
-		key string
-		x   int
-		y   int
-	}{
-		{"上(AI)", g.sc.PX(250), g.sc.PX(150)},
-		{"左(AI)", g.sc.PX(176), g.sc.PX(210)},
-		{"右(AI)", g.sc.PX(388), g.sc.PX(210)},
-		{"下(你)", g.sc.PX(250), g.sc.PX(268)},
+	inner := g.tableInnerBounds()
+	centerX := inner.X + inner.W/2
+	centerY := inner.Y + inner.H/2
+	gap := g.sc.PXAbsolute(18)
+
+	playPool := Rect{
+		X: centerX - g.sc.PXAbsolute(128),
+		Y: centerY - g.sc.PXAbsolute(86),
+		W: g.sc.PXAbsolute(256),
+		H: g.sc.PXAbsolute(172),
 	}
-	gap := g.sc.PXAbsolute(15)
-	for _, p := range positions {
-		cards := view.CurrentTrick[p.key]
-		for i, c := range cards {
-			g.drawCardPhys(screen, p.x+i*gap, p.y, c, false, 1)
-		}
+	drawRoundedPanel(screen, playPool, g.sc.PXAbsolute(18), 1,
+		tintWithAlpha(panelFillColor, 0x7a), tintWithAlpha(panelBorderColor, 0x46))
+
+	anchors := []struct {
+		key     string
+		centerX int
+		y       int
+	}{
+		{view.Players[2].Position, centerX, centerY - g.sc.PXAbsolute(72)},
+		{view.Players[1].Position, centerX - g.sc.PXAbsolute(114), centerY - g.sc.PXAbsolute(8)},
+		{view.Players[3].Position, centerX + g.sc.PXAbsolute(114), centerY - g.sc.PXAbsolute(8)},
+		{view.Players[0].Position, centerX, centerY + g.sc.PXAbsolute(56)},
+	}
+	for _, anchor := range anchors {
+		g.drawCardRowCentered(screen, view.CurrentTrick[anchor.key], anchor.centerX, anchor.y, gap)
 	}
 
 	showBottom := len(view.BottomCards) > 0 &&
 		(view.Phase == baseui.PhaseDiscard || view.Phase == baseui.PhaseHandResult)
 	if showBottom {
-		for i, c := range view.BottomCards {
-			g.drawCardPhys(screen,
-				g.sc.PX(RefBottomX)+i*g.sc.PXAbsolute(RefBottomGap),
-				g.sc.PX(RefBottomY), c, false, 1)
+		cardW, _ := g.sc.CardPhysSize()
+		totalW := cardW
+		if len(view.BottomCards) > 1 {
+			totalW += (len(view.BottomCards) - 1) * g.sc.PXAbsolute(RefBottomGap)
 		}
+		tray := Rect{
+			X: centerX - totalW/2 - g.sc.PXAbsolute(16),
+			Y: centerY - g.sc.PXAbsolute(26),
+			W: totalW + g.sc.PXAbsolute(32),
+			H: g.sc.PXAbsolute(92),
+		}
+		drawRoundedPanel(screen, tray, g.sc.PXAbsolute(14), 1,
+			tintWithAlpha(panelFillColor, 0xb8), tintWithAlpha(panelBorderColor, 0x7a))
+		g.physText(screen, "底牌",
+			tray.X+g.sc.PXAbsolute(12),
+			tray.Y+g.sc.PXAbsolute(16),
+			hiliteColor)
+		g.drawCardRowCentered(screen, view.BottomCards, centerX, tray.Y+g.sc.PXAbsolute(24), g.sc.PXAbsolute(RefBottomGap))
 	}
 }
 
@@ -294,6 +401,12 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 	if view.Phase == baseui.PhaseBidding {
 		biddingRaise = g.biddingRaisedCards(view)
 	}
+
+	table := g.tableOuterBounds()
+	panelW := g.sc.PXAbsolute(118)
+	g.drawSeatLabelPhys(screen, pv,
+		table.X+table.W/2-panelW/2,
+		g.southHandY()-g.sc.PXAbsolute(48))
 
 	var slots []southSlot
 	slots = g.southSlotsAdaptive(pv.HandCards, selected, biddingRaise, view.TrumpSuit)
@@ -309,6 +422,15 @@ func (g *GUI) drawSouth(screen *ebiten.Image, view baseui.TableView, selected ma
 	g.st.mu.Lock()
 	g.st.cardRects = rects
 	g.st.mu.Unlock()
+}
+
+func (g *GUI) drawSeatTag(screen *ebiten.Image, label string, x, y int, fill, border color.RGBA) int {
+	w := g.textWidth(label) + g.sc.PXAbsolute(12)
+	h := g.sc.PXAbsolute(14)
+	drawRoundedPanel(screen, Rect{X: x, Y: y, W: w, H: h},
+		g.sc.PXAbsolute(6), 1, fill, border)
+	g.physText(screen, label, x+g.sc.PXAbsolute(6), y+g.sc.PXAbsolute(10), color.White)
+	return x + w + g.sc.PXAbsolute(4)
 }
 
 func (g *GUI) southSlots(cards []baseui.CardView, selected map[int]bool,
@@ -344,8 +466,9 @@ func (g *GUI) southSlots(cards []baseui.CardView, selected map[int]bool,
 		totalWidth += gap
 	}
 
-	tableX := g.sc.PX(RefTableX)
-	tableW := g.sc.PXAbsolute(RefTableW)
+	tableRect := g.tableInnerBounds()
+	tableX := tableRect.X
+	tableW := tableRect.W
 	startX := tableX + (tableW-totalWidth)/2
 	southHandX := g.sc.PX(RefSouthHandX)
 	if startX < southHandX {
@@ -354,7 +477,7 @@ func (g *GUI) southSlots(cards []baseui.CardView, selected map[int]bool,
 		startX = tableX + tableW - totalWidth
 	}
 
-	y := g.sc.PX(RefSouthHandY)
+	y := g.southHandY()
 	_, physCardH := g.sc.CardPhysSize()
 
 	var slots []southSlot
@@ -551,38 +674,60 @@ func bidSuitToIconSymbol(suit string) string {
 // ----- 菜单栏 -------------------------------------------------------------
 
 func (g *GUI) drawMenuBar(screen *ebiten.Image, view baseui.TableView) {
-	menuH := g.sc.PXAbsolute(RefMenuBarH)
-	resetFillRect(screen, g.sc.PX(0), g.sc.PX(0),
-		g.sc.PXAbsolute(RefWidth), menuH,
-		color.RGBA{0xe7, 0xe7, 0xe7, 0xff})
-	resetStrokeRect(screen, g.sc.PX(0), g.sc.PX(0),
-		g.sc.PXAbsolute(RefWidth), menuH, 1,
-		color.RGBA{0x88, 0x88, 0x88, 0xff})
-
 	startEnabled := view.Phase == baseui.PhaseWelcome || view.Phase == baseui.PhaseGameOver || view.Phase == baseui.PhaseHandResult
 	restartEnabled := view.Phase != baseui.PhaseWelcome
 
-	g.drawTopMenuButton(screen, g.sc.PX(8), g.sc.PX(3),
-		g.sc.PXAbsolute(92), g.sc.PXAbsolute(18),
+	titleRect := Rect{
+		X: g.sc.PX(14),
+		Y: g.sc.PX(12),
+		W: g.sc.PXAbsolute(104),
+		H: g.sc.PXAbsolute(24),
+	}
+	drawRoundedPanel(screen, titleRect, g.sc.PXAbsolute(12), 1,
+		tintWithAlpha(panelFillColor, 0xe4), tintWithAlpha(panelBorderColor, 0x7a))
+	g.physText(screen, "升级牌桌",
+		titleRect.X+g.sc.PXAbsolute(12),
+		titleRect.Y+g.sc.PXAbsolute(16),
+		hiliteColor)
+
+	g.drawTopMenuButton(screen, g.sc.PX(126), g.sc.PX(12),
+		g.sc.PXAbsolute(84), g.sc.PXAbsolute(24),
 		"开始游戏", baseui.UIAction{Type: baseui.ActionStart}, startEnabled)
-	g.drawTopMenuButton(screen, g.sc.PX(106), g.sc.PX(3),
-		g.sc.PXAbsolute(92), g.sc.PXAbsolute(18),
+	g.drawTopMenuButton(screen, g.sc.PX(218), g.sc.PX(12),
+		g.sc.PXAbsolute(84), g.sc.PXAbsolute(24),
 		"重新开始", baseui.UIAction{Type: baseui.ActionRestart}, restartEnabled)
+
+	tip := "Enter确认  Esc清空  H提示"
+	tipW := g.textWidth(tip) + g.sc.PXAbsolute(22)
+	tipRect := Rect{
+		X: g.sc.PX(RefWidth) - tipW - g.sc.PXAbsolute(14),
+		Y: g.sc.PX(12),
+		W: tipW,
+		H: g.sc.PXAbsolute(24),
+	}
+	drawRoundedPanel(screen, tipRect, g.sc.PXAbsolute(12), 1,
+		tintWithAlpha(panelFillColor, 0xcc), tintWithAlpha(statusRibbonBorder, 0x70))
+	g.physText(screen, tip,
+		tipRect.X+g.sc.PXAbsolute(12),
+		tipRect.Y+g.sc.PXAbsolute(16),
+		panelTextMutedColor)
 }
 
 func (g *GUI) drawTopMenuButton(screen *ebiten.Image, x, y, w, h int,
 	label string, action baseui.UIAction, enabled bool) {
 
-	fill := color.RGBA{0xff, 0xff, 0xff, 0xff}
-	var textColor color.Color = color.Black
+	fill := tintWithAlpha(panelMutedColor, 0xee)
+	border := tintWithAlpha(panelBorderColor, 0x84)
+	var textColor color.Color = color.White
 	if !enabled {
-		fill = color.RGBA{0xd4, 0xd4, 0xd4, 0xff}
-		textColor = color.RGBA{0x66, 0x66, 0x66, 0xff}
+		fill = tintWithAlpha(disabledColor, 0xf0)
+		border = tintWithAlpha(color.RGBA{0x66, 0x66, 0x66, 0xff}, 0xa0)
+		textColor = color.RGBA{0xdf, 0xdf, 0xdf, 0xff}
 	}
-	resetFillRect(screen, x, y, w, h, fill)
-	resetStrokeRect(screen, x, y, w, h, 1, outlineColor)
+	drawRoundedPanel(screen, Rect{X: x, Y: y, W: w, H: h},
+		g.sc.PXAbsolute(10), 1, fill, border)
 
-	textOffset := g.sc.PXAbsolute(12)
+	textOffset := (w - g.textWidth(label)) / 2
 	textY := y + h/2 + int(g.sc.FontSize()*0.3)
 	g.physText(screen, label, x+textOffset, textY, textColor)
 
@@ -604,7 +749,7 @@ func (g *GUI) drawButtons(screen *ebiten.Image, view baseui.TableView, selected 
 		btnY := g.sc.PX(RefHeight/2) + g.sc.PXAbsolute(60)
 		g.drawActionButtonPhys(screen, centerX, btnY,
 			g.sc.PXAbsolute(240), g.sc.PXAbsolute(50),
-			btn.Label, baseui.UIAction{Type: baseui.ActionType(btn.ID)},
+			sanitizeButtonLabel(btn.Label), baseui.UIAction{Type: baseui.ActionType(btn.ID)},
 			btn.Enabled, false)
 		return
 	}
@@ -617,35 +762,41 @@ func (g *GUI) drawButtons(screen *ebiten.Image, view baseui.TableView, selected 
 	btnW := g.sc.PXAbsolute(RefActionBtnW)
 	btnH := g.sc.PXAbsolute(RefActionBtnH)
 	btnY := g.sc.PX(RefActionBtnY)
+	gap := g.sc.PXAbsolute(12)
 
 	if view.Phase == baseui.PhasePlaying && view.WaitingForHuman {
-		g.drawActionButtonPhys(screen, g.sc.PX(120), btnY, btnW, btnH,
+		totalW := btnW*3 + gap*2
+		startX := g.sc.PX(RefWidth/2) - totalW/2
+		g.drawActionButtonPhys(screen, startX, btnY, btnW, btnH,
 			"提示", baseui.UIAction{Type: baseui.ActionHint}, view.CanHint, true)
-		g.drawActionButtonPhys(screen, g.sc.PX(226), btnY, btnW, btnH,
+		g.drawActionButtonPhys(screen, startX+btnW+gap, btnY, btnW, btnH,
 			"出牌", baseui.UIAction{Type: baseui.ActionPlay}, len(selected) > 0, false)
-		g.drawActionButtonPhys(screen, g.sc.PX(332), btnY, btnW, btnH,
+		g.drawActionButtonPhys(screen, startX+(btnW+gap)*2, btnY, btnW, btnH,
 			"取消", baseui.UIAction{Type: baseui.ActionCancel}, len(selected) > 0, true)
 	}
 
 	if view.Phase == baseui.PhaseDiscard {
-		g.drawActionButtonPhys(screen, g.sc.PX(254), btnY, btnW, btnH,
+		totalW := btnW*2 + gap
+		startX := g.sc.PX(RefWidth/2) - totalW/2
+		g.drawActionButtonPhys(screen, startX, btnY, btnW, btnH,
 			"扣底", baseui.UIAction{Type: baseui.ActionPlay},
 			len(selected) == view.DiscardCount, false)
-		g.drawActionButtonPhys(screen, g.sc.PX(360), btnY, btnW, btnH,
+		g.drawActionButtonPhys(screen, startX+btnW+gap, btnY, btnW, btnH,
 			"取消", baseui.UIAction{Type: baseui.ActionCancel},
 			len(selected) > 0, true)
 	}
 
 	// 通用按钮（从 view.Buttons）
-	for i, b := range view.Buttons {
-		x := g.sc.PX(430) + i*g.sc.PXAbsolute(100)
-		if x+btnW > g.sc.PXAbsolute(RefWidth) {
-			x = g.sc.PX(430)
+	if len(view.Buttons) > 0 {
+		totalW := len(view.Buttons)*btnW + maxInt(0, len(view.Buttons)-1)*gap
+		startX := g.sc.PX(RefWidth/2) - totalW/2
+		for i, b := range view.Buttons {
+			x := startX + i*(btnW+gap)
+			g.drawActionButtonPhys(screen, x, btnY, btnW, btnH,
+				sanitizeButtonLabel(b.Label),
+				baseui.UIAction{Type: baseui.ActionType(b.ID)},
+				b.Enabled, false)
 		}
-		g.drawActionButtonPhys(screen, x, btnY, btnW, btnH,
-			sanitizeButtonLabel(b.Label),
-			baseui.UIAction{Type: baseui.ActionType(b.ID)},
-			b.Enabled, false)
 	}
 }
 
@@ -661,19 +812,24 @@ func (g *GUI) drawActionButtonPhys(screen *ebiten.Image, x, y, w, h int,
 	label string, action baseui.UIAction, enabled bool, secondary bool) {
 
 	fill := color.RGBA{0xdb, 0xb7, 0x43, 0xff}
+	border := color.RGBA{0x7b, 0x5c, 0x18, 0xff}
 	var textColor color.Color = color.Black
 	if secondary {
-		fill = secondaryButtonFill
+		fill = color.RGBA{0x2b, 0x5e, 0x69, 0xff}
+		border = color.RGBA{0x7a, 0xb0, 0xb7, 0xff}
 		textColor = color.White
 	}
 	if !enabled {
-		fill = disabledColor
+		fill = color.RGBA{0x5f, 0x66, 0x68, 0xff}
+		border = color.RGBA{0x4c, 0x51, 0x53, 0xff}
 		textColor = color.RGBA{0xdd, 0xdd, 0xdd, 0xff}
 	}
-	resetFillRect(screen, x, y, w, h, fill)
-	resetStrokeRect(screen, x, y, w, h, 1, outlineColor)
+	drawRoundedPanel(screen, Rect{X: x, Y: y + g.sc.PXAbsolute(2), W: w, H: h},
+		g.sc.PXAbsolute(12), 0, tintWithAlpha(color.RGBA{0x05, 0x08, 0x0a, 0xff}, 0x80), tintWithAlpha(color.RGBA{}, 0))
+	drawRoundedPanel(screen, Rect{X: x, Y: y, W: w, H: h},
+		g.sc.PXAbsolute(12), 1, fill, border)
 
-	textOffset := g.sc.PXAbsolute(10)
+	textOffset := (w - g.textWidth(label)) / 2
 	textY := y + h/2 + int(g.sc.FontSize()*0.3)
 	g.physText(screen, label, x+textOffset, textY, textColor)
 
@@ -740,21 +896,21 @@ func bidPriority(kind string) int {
 }
 
 func (g *GUI) drawBidButtonsPhys(screen *ebiten.Image, view baseui.TableView) {
-	panelX := g.sc.PX(RefBidPanelX)
-	panelY := g.sc.PX(RefBidPanelY)
-	panelW := g.sc.PXAbsolute(RefBidPanelW)
-	panelH := g.sc.PXAbsolute(RefBidPanelH)
+	inner := g.tableInnerBounds()
+	panelW := maxInt(g.sc.PXAbsolute(RefBidPanelW), g.sc.PXAbsolute(210))
+	panelH := maxInt(g.sc.PXAbsolute(RefBidPanelH), g.sc.PXAbsolute(126))
+	panelX := inner.X + inner.W - panelW - g.sc.PXAbsolute(18)
+	panelY := inner.Y + g.sc.PXAbsolute(74)
 
-	resetFillRect(screen, panelX, panelY, panelW, panelH,
-		color.RGBA{0x1e, 0x26, 0x31, 0xf0})
-	resetStrokeRect(screen, panelX, panelY, panelW, panelH, 2, hiliteColor)
+	drawRoundedPanel(screen, Rect{X: panelX, Y: panelY, W: panelW, H: panelH},
+		g.sc.PXAbsolute(16), 1, tintWithAlpha(panelFillColor, 0xf2), panelBorderColor)
 
 	titleX := panelX + g.sc.PXAbsolute(RefBidTitleX)
 	titleY := panelY + g.sc.PXAbsolute(RefBidTitleY)
 	g.physText(screen, "亮主", titleX, titleY, hiliteColor)
 
 	hintX := titleX + g.sc.PXAbsolute(36)
-	g.physText(screen, "选花色后点继续", hintX, titleY, color.White)
+	g.physText(screen, "先选花色，再继续", hintX, titleY, panelTextMutedColor)
 
 	g.st.mu.RLock()
 	selectedKey := g.st.selectedBidChoice
@@ -792,7 +948,7 @@ func (g *GUI) drawBidButtonsPhys(screen *ebiten.Image, view baseui.TableView) {
 			true, special.Type+"|"+special.Suit != selectedKey)
 	}
 
-	btnH := g.sc.PXAbsolute(26)
+	btnH := g.sc.PXAbsolute(28)
 	g.drawActionButtonPhys(screen,
 		panelX+panelW-g.sc.PXAbsolute(168),
 		panelY+g.sc.PXAbsolute(76),
@@ -809,17 +965,18 @@ func (g *GUI) drawBidButtonsPhys(screen *ebiten.Image, view baseui.TableView) {
 func (g *GUI) drawBidSuitButtonPhys(screen *ebiten.Image, x, y, size int,
 	choice baseui.BidChoice, selected bool, enabled bool) {
 
-	fill := color.RGBA{0xcf, 0xcf, 0xcf, 0xff}
-	stroke := color.RGBA{0x55, 0x5d, 0x66, 0xff}
+	fill := color.RGBA{0x4a, 0x53, 0x58, 0xff}
+	stroke := color.RGBA{0x6f, 0x7a, 0x80, 0xff}
 	if enabled {
-		fill = color.RGBA{0xf2, 0xf2, 0xf2, 0xff}
+		fill = color.RGBA{0xf2, 0xf1, 0xec, 0xff}
+		stroke = color.RGBA{0xc2, 0xb7, 0x97, 0xff}
 	}
 	if selected {
-		fill = color.RGBA{0x4d, 0x8f, 0xff, 0xff}
+		fill = color.RGBA{0x12, 0x5b, 0x74, 0xff}
 		stroke = hiliteColor
 	}
-	resetFillRect(screen, x, y, size, size, fill)
-	resetStrokeRect(screen, x, y, size, size, 2, stroke)
+	drawRoundedPanel(screen, Rect{X: x, Y: y, W: size, H: size},
+		g.sc.PXAbsolute(8), 1, fill, stroke)
 
 	// 优先使用花色图标显示
 	sym := bidSuitToIconSymbol(choice.Suit)
@@ -850,7 +1007,11 @@ func (g *GUI) drawBidSuitButtonPhys(screen *ebiten.Image, x, y, size int,
 		}
 		textOffset := g.sc.PXAbsolute(10)
 		textY := y + size/2 + int(g.sc.FontSize()*0.3)
-		g.physText(screen, symbol, x+textOffset, textY, color.RGBA{0x5a, 0x5a, 0x5a, 0xff})
+		var textColor color.Color = color.RGBA{0x5a, 0x5a, 0x5a, 0xff}
+		if selected {
+			textColor = color.White
+		}
+		g.physText(screen, symbol, x+textOffset, textY, textColor)
 	}
 
 	g.st.mu.Lock()

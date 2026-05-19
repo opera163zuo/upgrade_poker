@@ -29,8 +29,9 @@ func TestSouthSlotsAdaptiveStayWithinTableWithLargeHand(t *testing.T) {
 	}
 
 	cardW, _ := g.sc.CardPhysSize()
-	tableX := g.sc.PX(RefTableX)
-	tableRight := tableX + g.sc.PXAbsolute(RefTableW)
+	tableRect := g.tableInnerBounds()
+	tableX := tableRect.X
+	tableRight := tableRect.X + tableRect.W
 	minX := slots[0].x
 	maxRight := slots[0].x + cardW
 	for _, slot := range slots[1:] {
